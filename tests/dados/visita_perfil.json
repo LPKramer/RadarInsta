@@ -1,0 +1,28 @@
+[
+  [200, {"data": {"xdt_get_inbox_tray_items": {"items": []}}}],
+  [200, {"data": {"user": {"pk": "123456789", "id": "123456789", "username": "Maria.Palmas",
+                           "full_name": "Maria | Palmas - TO",
+                           "biography": "Criadora de conteúdo em Palmas, Tocantins", "follower_count": 54321,
+                           "following_count": 800, "media_count": 950, "is_private": false, "is_verified": true,
+                           "is_business": false, "category": "Criador de conteúdo digital",
+                           "external_url": "https://linktr.ee/maria", "city_name": "Palmas"},
+                  "viewer": {"user": {"id": "1"}}}}],
+  [200, {"data": {"xdt_api__v1__feed__user_timeline_graphql_connection": {
+    "edges": [
+      {"node": {"pk": "4020438279513438535", "id": "4020438279513438535_123456789", "code": "DfLd1Bjx_lH",
+                "taken_at": 1761868800, "media_type": 8, "product_type": "carousel_container", "like_count": 300,
+                "comment_count": 4, "caption": null, "location": null, "like_and_view_counts_disabled": false,
+                "timeline_pinned_user_ids": ["123456789"], "user": {"username": "maria.palmas", "pk": "123456789"}}},
+      {"node": {"pk": "4020437810137201592", "id": "4020437810137201592_123456789", "code": "DfLduMaxvu4",
+                "taken_at": 1761955200, "media_type": 2, "product_type": "clips", "like_count": 1500,
+                "comment_count": 120, "play_count": 30000, "caption": {"text": "Sem energia no Plano Diretor Sul de novo"},
+                "location": {"name": "Palmas, Tocantins"}, "like_and_view_counts_disabled": false,
+                "timeline_pinned_user_ids": [], "user": {"username": "maria.palmas", "pk": "123456789"}}}
+    ],
+    "page_info": {"end_cursor": "abc", "has_next_page": true, "has_previous_page": false, "start_cursor": null}},
+    "xdt_viewer": {}}}],
+  [200, {"data": {"xdt_api__v1__discover__chaining": {"users": [
+    {"pk": "11", "id": "11", "username": "joao.to", "full_name": "João TO", "is_private": false, "is_verified": false},
+    {"pk": "12", "id": "12", "username": "fechado", "full_name": "Perfil fechado", "is_private": true, "is_verified": false}
+  ]}}}]
+]

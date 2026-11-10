@@ -1,0 +1,9 @@
+[project]
+name = "radar-reputacao"
+version = "0.1.0"
+description = "Radar de reputação Energisa — banco de contas de notícia e fofoca do Instagram (Tocantins)"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

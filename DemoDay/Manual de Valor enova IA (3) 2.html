@@ -1,0 +1,581 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Manual de Valor enova IA</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Caladea:wght@400;700&family=Carlito:ital,wght@0,400;0,700;1,400&display=swap">
+<style>
+/* Layout: capa navy com fio ciano (como o catálogo do Bootcamp), seções abertas por faixa teal com número em bloco navy, corpo em coluna de leitura */
+:root{
+  --navy:#0b1f3a; --cyan:#22c7d6; --teal:#2e7d8f; --mist:#f2f6f8;
+  --bg:#ffffff; --surface:#f2f6f8; --ink:#16222f; --muted:#56657a; --line:#d5e0e8;
+  --on-band:#ffffff; --chip:#e3f1f4; --chip-ink:#1f5f6d; --accent-soft:rgba(34,199,214,.14);
+  --display:"Caladea",Cambria,Georgia,serif;
+  --body:"Carlito",Calibri,"Segoe UI",Arial,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0a1a31; --surface:#10284a; --ink:#e4edf4; --muted:#9db0c3; --line:#22406a;
+  --teal:#3b97aa; --chip:#123a52; --chip-ink:#8fdbe6; --navy:#071427; --accent-soft:rgba(34,199,214,.18); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0a1a31; --surface:#10284a; --ink:#e4edf4; --muted:#9db0c3; --line:#22406a;
+  --teal:#3b97aa; --chip:#123a52; --chip-ink:#8fdbe6; --navy:#071427; --accent-soft:rgba(34,199,214,.18); color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:17px;line-height:1.55}
+.wrap{max-width:960px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0;line-height:1.15}
+p{margin:0;max-width:68ch}
+a{color:var(--teal)}
+:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+
+/* capa */
+.cover{background:var(--navy);color:#fff}
+.cover .wrap{padding-block:72px 48px;display:grid;gap:18px}
+.cover .rule{height:3px;background:var(--cyan);margin-bottom:8px}
+.cover .brand{font-family:var(--display);font-weight:700;font-size:clamp(34px,6vw,52px);letter-spacing:-.01em}
+.cover h1{font-size:clamp(26px,4.4vw,40px);font-weight:700;color:#fff}
+.cover .lead{color:#c9d6e0;font-size:18px;max-width:60ch}
+.eyebrow{font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--cyan)}
+.cover .facts{display:flex;flex-wrap:wrap;gap:10px 28px;margin-top:10px;padding-top:18px;border-top:1px solid rgba(201,214,224,.25)}
+.cover .fact{display:grid;gap:2px}
+.cover .fact b{font-family:var(--display);font-size:26px;color:#fff;font-variant-numeric:tabular-nums}
+.cover .fact span{font-size:13px;color:#9fb0c0}
+
+/* sumário */
+.toc{padding-block:36px 8px}
+.toc ol{list-style:none;margin:14px 0 0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:6px 24px}
+.toc a{display:flex;gap:12px;align-items:baseline;text-decoration:none;color:var(--ink);padding:6px 0;border-bottom:1px solid var(--line)}
+.toc a:hover{color:var(--teal)}
+.toc .n{font-weight:700;color:var(--teal);font-variant-numeric:tabular-nums;min-width:22px}
+
+/* seções */
+section{padding-block:40px 8px;scroll-margin-top:12px}
+.shead{display:flex;align-items:stretch;margin-bottom:22px;min-width:0}
+.shead .num{background:var(--navy);color:#fff;font-family:var(--display);font-weight:700;font-size:26px;display:grid;place-items:center;min-width:64px;padding:10px 14px;font-variant-numeric:tabular-nums}
+.shead .bar{background:var(--teal);color:var(--on-band);padding:14px 20px;flex:1;min-width:0;display:grid;gap:2px}
+.shead .bar small{font-size:12px;letter-spacing:.1em;text-transform:uppercase;opacity:.85}
+.shead h2{font-size:clamp(22px,3.2vw,28px);color:var(--on-band)}
+.stack{display:grid;gap:14px}
+.label{font-size:12.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--teal);margin-top:10px}
+.thesis{border-left:3px solid var(--cyan);background:var(--accent-soft);padding:14px 18px;font-size:18px}
+.thesis b{font-family:var(--display)}
+
+ol.rules{margin:0;padding:0;list-style:none;counter-reset:r;display:grid;gap:12px}
+ol.rules li{counter-increment:r;display:grid;grid-template-columns:36px 1fr;gap:12px;align-items:start}
+ol.rules li::before{content:counter(r);font-family:var(--display);font-weight:700;font-size:18px;color:#fff;background:var(--navy);width:32px;height:32px;display:grid;place-items:center}
+ol.rules b{display:block}
+
+/* tabelas */
+.tbl{overflow-x:auto;border:1px solid var(--line)}
+table{border-collapse:collapse;width:100%;font-size:15px;min-width:560px}
+th{background:var(--navy);color:#fff;text-align:left;font-weight:700;padding:10px 12px;font-size:13.5px;letter-spacing:.02em}
+td{padding:10px 12px;border-top:1px solid var(--line);vertical-align:top}
+tbody tr:nth-child(even) td{background:var(--surface)}
+td.num,th.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+.chip{display:inline-block;font-size:12.5px;font-weight:700;padding:2px 8px;background:var(--chip);color:var(--chip-ink);white-space:nowrap}
+.tag{font-weight:700;font-size:12px;letter-spacing:.06em;padding:1px 6px;border:1px solid var(--teal);color:var(--teal)}
+
+/* tipos de valor */
+.types{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:14px}
+.type{border:1px solid var(--line);border-top:4px solid var(--teal);padding:16px 18px;display:grid;gap:8px;align-content:start;min-width:0}
+.type h3{font-size:20px}
+.type .k{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.type p{font-size:15.5px}
+.type .n{font-size:13px;color:var(--muted)}
+
+/* fórmulas */
+.formula{background:var(--navy);color:#e9f4f7;padding:16px 20px;font-family:var(--display);font-size:clamp(16px,2.2vw,19px);overflow-x:auto}
+.formula .eq{color:var(--cyan)}
+.note{font-size:15px;color:var(--muted)}
+
+/* escada */
+.figure{overflow-x:auto}
+.figure svg{display:block;width:100%;min-width:620px;height:auto}
+.st-box{fill:var(--bg);stroke:var(--line);stroke-width:1.5}
+.st-top{fill:var(--accent-soft);stroke:var(--cyan);stroke-width:2.5}
+.st-name{fill:var(--ink);font-family:var(--display);font-weight:700;font-size:17px}
+.st-q{fill:var(--ink);font-family:var(--body);font-size:14.5px}
+.st-ex{fill:var(--muted);font-family:var(--body);font-size:13.5px}
+.st-ph{fill:var(--teal);font-family:var(--body);font-size:12.5px;font-weight:700;letter-spacing:.06em}
+
+/* exemplo */
+.example{border:1px solid var(--line);background:var(--surface);padding:18px 20px;display:grid;gap:12px}
+
+/* ficha */
+.ficha{display:grid;gap:18px}
+.bloco h3{font-size:19px;margin-bottom:8px;display:flex;gap:10px;align-items:baseline}
+.bloco h3 span{font-family:var(--body);font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--teal)}
+.fill td:last-child{min-width:240px}
+.fill td:first-child{width:46%;font-weight:700}
+.blank{display:block;border-bottom:1px dashed var(--line);height:1.3em}
+.sentence{border:1px dashed var(--teal);padding:14px 18px;font-size:17px}
+.sentence b{color:var(--teal)}
+
+/* checklist */
+.check{display:grid;gap:8px;margin:0;padding:0;list-style:none}
+.check label{display:flex;gap:12px;align-items:flex-start;padding:10px 14px;border:1px solid var(--line);cursor:pointer}
+.check input{width:18px;height:18px;margin-top:3px;accent-color:var(--teal);flex:none}
+.check input:checked + span{color:var(--muted);text-decoration:line-through}
+.progress{font-size:14px;color:var(--muted);font-variant-numeric:tabular-nums}
+
+footer{margin-top:48px;border-top:3px solid var(--cyan);background:var(--navy);color:#9fb0c0;font-size:13.5px}
+footer .wrap{padding-block:22px;display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px}
+
+@media (max-width:520px){
+  body{font-size:16px}
+  .shead .num{min-width:48px;font-size:20px}
+  .cover .wrap{padding-block:48px 36px}
+}
+@media print{
+  body{font-size:11pt}
+  section{break-inside:avoid-page}
+  .tbl{overflow:visible}
+  .toc{break-after:page}
+}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+html{scroll-behavior:smooth}
+</style>
+
+<header class="cover">
+  <div class="wrap">
+    <div class="rule" aria-hidden="true"></div>
+    <div class="brand">enova IA</div>
+    <h1>Manual de Valor: o que medir e como provar o impacto das iniciativas de IA</h1>
+    <p class="lead">Guia para autores e squads do Bootcamp de Prototipação em IA. Vai do uso da solução até a captura do impacto, com indicadores, fórmulas e a ficha padrão de medição.</p>
+    <div class="eyebrow">Grupo Energisa · Programa enova · Ciclo 2026 · 12 semanas · Demo Day 30/11/26</div>
+    <div class="facts">
+      <div class="fact"><b>31</b><span>iniciativas do Bootcamp</span></div>
+      <div class="fact"><b>4</b><span>degraus de valor</span></div>
+      <div class="fact"><b>6</b><span>tipos de valor no book de indicadores</span></div>
+      <div class="fact"><b>1</b><span>ficha padrão por iniciativa</span></div>
+    </div>
+  </div>
+</header>
+
+<main>
+<nav class="wrap toc" aria-label="Sumário">
+  <div class="eyebrow" style="color:var(--teal)">Sumário</div>
+  <ol>
+    <li><a href="#s1"><span class="n">01</span>Para que serve este manual</a></li>
+    <li><a href="#s2"><span class="n">02</span>Princípios: as regras do jogo</a></li>
+    <li><a href="#s3"><span class="n">03</span>A escada de valor da IA</a></li>
+    <li><a href="#s4"><span class="n">04</span>Tipos de valor e book de indicadores</a></li>
+    <li><a href="#s5"><span class="n">05</span>Como medir: do antes ao depois</a></li>
+    <li><a href="#s6"><span class="n">06</span>Qualidade da IA: quem mede o quê</a></li>
+    <li><a href="#s7"><span class="n">07</span>Do resultado operacional ao impacto</a></li>
+    <li><a href="#s8"><span class="n">08</span>Ficha padrão de medição</a></li>
+    <li><a href="#s9"><span class="n">09</span>Exemplo preenchido</a></li>
+    <li><a href="#s10"><span class="n">10</span>Calendário de medição</a></li>
+    <li><a href="#s11"><span class="n">11</span>Erros comuns e checklist</a></li>
+    <li><a href="#s12"><span class="n">12</span>Glossário e referências</a></li>
+  </ol>
+</nav>
+
+<!-- 01 -->
+<section id="s1" class="wrap">
+  <div class="shead"><div class="num">01</div><div class="bar"><small>Introdução</small><h2>Para que serve este manual</h2></div></div>
+  <div class="stack">
+    <p>Este manual ensina os autores das iniciativas de IA do enova a provar, com dados, que a solução gera valor: o que medir, como medir e como registrar. Ele vai do uso da solução até a captura do impacto. Custos, ROI e VPL ficam fora deste material.</p>
+    <p class="note"><b>Por que os custos não entram:</b> na fase de protótipo, o custo de uso da IA (tokens, licenças, ambiente) ainda não pode ser medido de forma confiável, porque depende de onde cada solução vai rodar em produção. O custo será tratado depois, pela coordenação do programa, quando houver dados de produção.</p>
+    <div class="label">Quem faz o quê</div>
+    <p>O squad define e reporta a qualidade técnica do modelo. A equipe de Impacto da Inovação orienta e valida o valor: linha de base, mudança no processo, impacto e conversão em valor. Este manual trata dessa segunda parte.</p>
+    <div class="label">Para quem é</div>
+    <p>Autores e squads das 31 iniciativas do Bootcamp de Prototipação em IA (Ciclo 2026), seus gestores e a equipe de Impacto da Inovação, que valida os resultados.</p>
+    <div class="label">O que você vai encontrar</div>
+    <ul style="margin:0;padding-left:20px;display:grid;gap:4px">
+      <li>Uma lógica única para qualquer projeto de IA: a escada de valor, com 4 degraus.</li>
+      <li>Um book de indicadores pronto por tipo de valor, com fórmulas.</li>
+      <li>O passo a passo para montar a linha de base e comparar o antes e o depois.</li>
+      <li>A ficha padrão de acompanhamento, que toda iniciativa preenche.</li>
+    </ul>
+    <p class="thesis"><b>A ideia central:</b> um modelo que acerta muito não gera valor sozinho. O valor aparece quando a IA é usada, muda o jeito de trabalhar e esse novo jeito produz um resultado que dá para medir em tempo, qualidade ou dinheiro.</p>
+  </div>
+</section>
+
+<!-- 02 -->
+<section id="s2" class="wrap">
+  <div class="shead"><div class="num">02</div><div class="bar"><small>Phillips · PMI</small><h2>Princípios: as regras do jogo</h2></div></div>
+  <div class="stack">
+    <p>Sete regras valem para toda iniciativa. Elas vêm da Metodologia ROI de Jack J. Phillips e do Benefits Realization Management e do CPMAI, ambos do PMI, adaptados à realidade do enova.</p>
+    <ol class="rules">
+      <li><div><b>Comece pelo problema de negócio, não pelo modelo.</b> O CPMAI, metodologia de projetos de IA do PMI, tem seis fases e a primeira é entender o negócio. Antes de escolher a ferramenta, responda: qual resultado precisa mudar?</div></li>
+      <li><div><b>Sem linha de base, não há ganho.</b> Só existe redução de tempo se o tempo de antes foi medido. Registre o "antes" antes de ligar a IA.</div></li>
+      <li><div><b>Meça os degraus de baixo também.</b> Para afirmar impacto, mostre que a IA foi usada e que o processo mudou. Phillips recomenda coletar os níveis anteriores sempre que avaliar um nível mais alto.</div></li>
+      <li><div><b>Isole o efeito da IA.</b> Use pelo menos um método para separar o que a IA fez do que outros fatores fizeram, como sazonalidade, mutirão, mudança de regra ou equipe nova.</div></li>
+      <li><div><b>Seja conservador.</b> Na dúvida entre dois números, use o menor. Não use casos extremos nem afirmações sem dado.</div></li>
+      <li><div><b>Benefício tem dono.</b> Para o PMI, a gestão de benefícios tem três momentos: identificar, executar e sustentar. Cada benefício precisa de um responsável na área de negócio que confirme o resultado.</div></li>
+      <li><div><b>Separe fato de estimativa.</b> Todo número na ficha é marcado como <span class="tag">M</span> Medido (veio de sistema ou registro), <span class="tag">E</span> Estimado (cálculo com premissa) ou <span class="tag">D</span> Declarado (opinião de especialista).</div></li>
+    </ol>
+  </div>
+</section>
+
+<!-- 03 -->
+<section id="s3" class="wrap">
+  <div class="shead"><div class="num">03</div><div class="bar"><small>Modelo</small><h2>A escada de valor da IA</h2></div></div>
+  <div class="stack">
+    <p>O valor de uma IA sobe por quatro degraus, do uso ao impacto. A escada adapta os níveis de avaliação de Phillips ao contexto de IA; custos e ROI ficam fora deste manual.</p>
+    <div class="figure" role="img" aria-label="Escada de valor: degrau 1 uso, 2 qualidade da IA, 3 mudança no processo, 4 impacto no negócio">
+      <svg viewBox="0 0 760 378" aria-hidden="true">
+        <g><rect class="st-top" x="184" y="10" width="552" height="80"/>
+          <text class="st-name" x="204" y="40">Degrau 4 · Impacto no negócio</text>
+          <text class="st-ph" x="716" y="40" text-anchor="end">PHILLIPS NÍVEL 4</text>
+          <text class="st-q" x="204" y="62">Gerou resultado em tempo, qualidade ou dinheiro?</text>
+          <text class="st-ex" x="204" y="80">Ex.: HH liberadas, receita recuperada, glosas, multas evitadas</text></g>
+        <g><rect class="st-box" x="144" y="102" width="552" height="80"/>
+          <text class="st-name" x="164" y="132">Degrau 3 · Mudança no processo</text>
+          <text class="st-ph" x="676" y="132" text-anchor="end">PHILLIPS NÍVEL 3</text>
+          <text class="st-q" x="164" y="154">O jeito de trabalhar mudou?</text>
+          <text class="st-ex" x="164" y="172">Ex.: tempo por caso, % dos casos tratados com IA, retrabalho</text></g>
+        <g><rect class="st-box" x="104" y="194" width="552" height="80"/>
+          <text class="st-name" x="124" y="224">Degrau 2 · Qualidade da IA</text>
+          <text class="st-ph" x="636" y="224" text-anchor="end">NÍVEL 2, ADAPTADO</text>
+          <text class="st-q" x="124" y="246">Acerta o bastante para mudar o trabalho? O squad mede e reporta.</text>
+          <text class="st-ex" x="124" y="264">Ex.: taxa de aceitação, erro de previsão, sempre contra o método atual</text></g>
+        <g><rect class="st-box" x="64" y="286" width="552" height="80"/>
+          <text class="st-name" x="84" y="316">Degrau 1 · Uso</text>
+          <text class="st-ph" x="596" y="316" text-anchor="end">PHILLIPS NÍVEL 1</text>
+          <text class="st-q" x="84" y="338">As pessoas usam a IA no dia a dia?</text>
+          <text class="st-ex" x="84" y="356">Ex.: usuários ativos, consultas por semana, satisfação</text></g>
+      </svg>
+    </div>
+    <p>Se um degrau falha, os de cima não se sustentam. Por isso a ficha pede pelo menos um indicador em cada degrau. Quando o impacto não aparece, os degraus de baixo mostram onde o valor se perdeu: no uso, na qualidade ou na mudança do processo.</p>
+  </div>
+</section>
+
+<!-- 04 -->
+<section id="s4" class="wrap">
+  <div class="shead"><div class="num">04</div><div class="bar"><small>O que medir</small><h2>Tipos de valor e book de indicadores</h2></div></div>
+  <div class="stack">
+    <p>Toda iniciativa de IA do Bootcamp gera valor por um de seis caminhos. Escolha o seu tipo <b>principal</b> (no máximo um secundário) e use os indicadores do book correspondentes a ele. Dois ou três indicadores bem medidos valem mais que dez soltos.</p>
+    <div class="types">
+      <div class="type"><div class="k">Tipo A · 14 iniciativas</div><h3>Produtividade</h3><p>Menos tempo e esforço por tarefa.</p><div class="label" style="margin:0">Indicadores</div><p>Tempo médio por caso (min) · casos por pessoa/mês · HH liberadas/mês</p><div class="label" style="margin:0">Como vira R$</div><p>HH liberadas são registradas como produtividade. Vira redução de custo quando um gasto real cai: hora extra, terceiro, escritório externo.</p></div>
+      <div class="type"><div class="k">Tipo B · 2 iniciativas</div><h3>Qualidade e conformidade</h3><p>Menos erro, retrabalho e duplicidade.</p><div class="label" style="margin:0">Indicadores</div><p>Taxa de erro (%) · casos com retrabalho (%) · duplicidades evitadas (nº)</p><div class="label" style="margin:0">Como vira R$</div><p>Custo do retrabalho evitado; compras ou estoques duplicados evitados.</p></div>
+      <div class="type"><div class="k">Tipo C · 4 iniciativas</div><h3>Receita e perdas</h3><p>Mais acerto onde há dinheiro a recuperar.</p><div class="label" style="margin:0">Indicadores</div><p>Taxa de acerto das inspeções ou ações (%) · kWh e R$ recuperados</p><div class="label" style="margin:0">Como vira R$</div><p>Receita recuperada: valor efetivamente faturado ou recebido.</p></div>
+      <div class="type"><div class="k">Tipo D · 5 iniciativas</div><h3>Pagamentos, falhas e multas evitados</h3><p>Menos pagamento indevido, falha de ativo ou penalidade.</p><div class="label" style="margin:0">Indicadores</div><p>Valor glosado (R$) · falhas evitadas (nº) · multas evitadas (nº e R$)</p><div class="label" style="margin:0">Como vira R$</div><p>Glosa = redução de custo. Falha ou multa evitada = custo evitado.</p></div>
+      <div class="type"><div class="k">Tipo E · 4 iniciativas</div><h3>Previsão e decisão</h3><p>Decisões tomadas com previsão melhor.</p><div class="label" style="margin:0">Indicadores</div><p>Erro da previsão (%) contra o método atual · decisões alteradas pela IA · resultado dessas decisões</p><div class="label" style="margin:0">Como vira R$</div><p>Só quando a decisão melhor gera ganho medido, como desembolso médio menor em acordos.</p></div>
+      <div class="type"><div class="k">Tipo F · 2 iniciativas</div><h3>Experiência e reputação</h3><p>Resposta mais rápida a cliente, imprensa ou público.</p><div class="label" style="margin:0">Indicadores</div><p>Tempo de resposta (h) · reclamações formais (nº) · sentimento médio</p><div class="label" style="margin:0">Como vira R$</div><p>Em geral é benefício não monetário. Monetize só com ligação direta, como multa ou consultoria substituída.</p></div>
+    </div>
+    <p class="note">O enquadramento final em categoria de retorno (redução de custo, receita recuperada ou custo evitado) segue a regra vigente do processo de Impacto da Inovação e é confirmado na validação.</p>
+
+    <h3 style="font-size:22px;margin-top:18px">Mapa das iniciativas do Bootcamp</h3>
+    <p>Classificação inicial feita a partir da descrição enviada por cada autor. É uma <b>sugestão</b>: o autor confirma ou ajusta na ficha.</p>
+    <div class="tbl"><table>
+      <thead><tr><th>ID</th><th>Iniciativa</th><th>Trilha</th><th>Tipo principal</th><th>Tipo secundário</th></tr></thead>
+      <tbody>
+        <tr><td class="num">16473</td><td>Orákula, radar de decisões judiciais</td><td>T1</td><td><span class="chip">A · Produtividade</span></td><td>D · Multas evitadas</td></tr>
+        <tr><td class="num">16826</td><td>Classificação para encerramento de processos</td><td>T1</td><td><span class="chip">A · Produtividade</span></td><td>B · Qualidade</td></tr>
+        <tr><td class="num">16972</td><td>Gestão de recebíveis judiciais</td><td>T1</td><td><span class="chip">C · Receita</span></td><td>E · Decisão</td></tr>
+        <tr><td class="num">18185</td><td>InteligêncIA, interpretação de decisões (OBFs)</td><td>T1</td><td><span class="chip">A · Produtividade</span></td><td>D · Multas evitadas</td></tr>
+        <tr><td class="num">16526</td><td>Comitê de Ética com IA generativa</td><td>T2</td><td><span class="chip">A · Produtividade</span></td><td>B · Qualidade</td></tr>
+        <tr><td class="num">16767</td><td>Google Interno de Compras</td><td>T2</td><td><span class="chip">A · Produtividade</span></td><td>E · Decisão</td></tr>
+        <tr><td class="num">18047</td><td>Análise técnica de projetos assistida por IA</td><td>T2</td><td><span class="chip">A · Produtividade</span></td><td>B · Qualidade</td></tr>
+        <tr><td class="num">18098</td><td>Benchmark de normas técnicas</td><td>T2</td><td><span class="chip">A · Produtividade</span></td><td>—</td></tr>
+        <tr><td class="num">18228</td><td>APR assistida por IA</td><td>T2</td><td><span class="chip">D · Falhas evitadas</span></td><td>B · Qualidade</td></tr>
+        <tr><td class="num">ENOVA-IDEIA-2026-0037</td><td>Chief of Staff do CEO</td><td>T2</td><td><span class="chip">A · Produtividade</span></td><td>—</td></tr>
+        <tr><td class="num">16777</td><td>Inteligência preditiva contra fraudes</td><td>T3</td><td><span class="chip">C · Receita</span></td><td>A · Produtividade</td></tr>
+        <tr><td class="num">16867</td><td>Manutenção inteligente de religadores</td><td>T3</td><td><span class="chip">D · Falhas evitadas</span></td><td>A · Produtividade</td></tr>
+        <tr><td class="num">16888</td><td>Validação de cadastro de materiais (PDM)</td><td>T3</td><td><span class="chip">B · Qualidade</span></td><td>D · Compras duplicadas evitadas</td></tr>
+        <tr><td class="num">16926</td><td>ShieldPlan, auditor do planejamento</td><td>T3</td><td><span class="chip">A · Produtividade</span></td><td>B · Qualidade</td></tr>
+        <tr><td class="num">16973</td><td>Monitoramento de demanda contratada</td><td>T3</td><td><span class="chip">E · Previsão</span></td><td>A · Produtividade</td></tr>
+        <tr><td class="num">18118</td><td>Revisão automatizada de balancetes</td><td>T3</td><td><span class="chip">A · Produtividade</span></td><td>B · Qualidade</td></tr>
+        <tr><td class="num">18126</td><td>Sentinela de perdas administrativas</td><td>T3</td><td><span class="chip">C · Receita</span></td><td>A · Produtividade</td></tr>
+        <tr><td class="num">16489</td><td>Tucagem de fotos para fiscalização ANEEL</td><td>T4</td><td><span class="chip">A · Produtividade</span></td><td>B · Conformidade</td></tr>
+        <tr><td class="num">16671</td><td>Análise espacial de clientes e infraestrutura</td><td>T4</td><td><span class="chip">C · Receita</span></td><td>B · Qualidade</td></tr>
+        <tr><td class="num">18242</td><td>Auditoria inteligente de OS de campo</td><td>T4</td><td><span class="chip">D · Pagamentos indevidos</span></td><td>C · Receita</td></tr>
+        <tr><td class="num">16808</td><td>Apoio à decisão de ofertas mensais</td><td>T5</td><td><span class="chip">A · Produtividade</span></td><td>E · Decisão</td></tr>
+        <tr><td class="num">16917</td><td>Previsão do balanço de energia</td><td>T5</td><td><span class="chip">E · Previsão</span></td><td>—</td></tr>
+        <tr><td class="num">16976</td><td>Smart Contencioso AI</td><td>T5</td><td><span class="chip">E · Decisão</span></td><td>D · Desembolso evitado</td></tr>
+        <tr><td class="num">18111</td><td>Configuração da proteção SEF em religadores</td><td>T5</td><td><span class="chip">D · Falhas evitadas</span></td><td>B · Conformidade</td></tr>
+        <tr><td class="num">18180</td><td>Previsão de carregamento de transformadores</td><td>T5</td><td><span class="chip">E · Previsão</span></td><td>D · Falhas evitadas</td></tr>
+        <tr><td class="num">18181</td><td>VMPS, validador de medições</td><td>T5</td><td><span class="chip">D · Pagamentos indevidos</span></td><td>A · Produtividade</td></tr>
+        <tr><td class="num">16656</td><td>Inteligência preditiva de stakeholders</td><td>T6</td><td><span class="chip">F · Reputação</span></td><td>—</td></tr>
+        <tr><td class="num">16862</td><td>Análise preditiva de chamados de TI</td><td>T6</td><td><span class="chip">B · Qualidade</span></td><td>A · Produtividade</td></tr>
+        <tr><td class="num">16878</td><td>Central IA de comunicação corporativa</td><td>T6</td><td><span class="chip">A · Produtividade</span></td><td>F · Experiência</td></tr>
+        <tr><td class="num">18068</td><td>Copiloto de design para o Energisa On</td><td>T6</td><td><span class="chip">A · Produtividade</span></td><td>B · Qualidade</td></tr>
+        <tr><td class="num">18241</td><td>Radar de sentimento digital por município</td><td>T6</td><td><span class="chip">F · Reputação</span></td><td>—</td></tr>
+      </tbody>
+    </table></div>
+    <p>14 iniciativas têm produtividade como valor principal. Para elas, a linha de base de tempo é o ponto mais crítico da medição.</p>
+  </div>
+</section>
+
+<!-- 05 -->
+<section id="s5" class="wrap">
+  <div class="shead"><div class="num">05</div><div class="bar"><small>Como medir</small><h2>Do antes ao depois</h2></div></div>
+  <div class="stack">
+    <p>Medir bem é comparar o mesmo processo, com e sem IA, na mesma unidade. Siga os quatro passos.</p>
+    <div class="label">Passo 1 · Defina a unidade</div>
+    <p>É a "coisa" que a IA trata: um processo judicial, uma OS, uma solicitação de cadastro, uma consulta, uma previsão mensal. Todo indicador é calculado por unidade e depois multiplicado pelo volume.</p>
+    <div class="label">Passo 2 · Registre a linha de base</div>
+    <p>É o retrato do processo sem IA. Use a melhor fonte disponível, nesta ordem:</p>
+    <ol style="margin:0;padding-left:22px;display:grid;gap:4px">
+      <li>Dado de sistema (WebSijur, SAP, SISUP, ADMS, sistema comercial).</li>
+      <li>Registro da equipe (planilha de controle, log, e-mails datados).</li>
+      <li>Cronometragem de uma amostra: medir o tempo real de um lote de casos.</li>
+      <li>Estimativa do especialista, marcada como <span class="tag">D</span> Declarado.</li>
+    </ol>
+    <p class="note">Orientação prática (sugestão, não regra estatística): use pelo menos 30 casos ou 1 mês de operação normal, evitando períodos atípicos como mutirões e férias coletivas.</p>
+    <div class="label">Passo 3 · Escolha o método de comparação</div>
+    <p>Use o mais forte que o seu processo permitir.</p>
+    <div class="tbl"><table>
+      <thead><tr><th>Método</th><th>Como funciona</th><th>Quando usar</th><th>Exemplo no Bootcamp</th><th>Força</th></tr></thead>
+      <tbody>
+        <tr><td><b>Grupo de controle</b></td><td>No mesmo período, parte dos casos usa IA e parte segue o método atual</td><td>Quando dá para dividir casos, rotas ou equipes</td><td>16777: rotas por score da IA contra roteirização manual</td><td><span class="chip">Alta</span></td></tr>
+        <tr><td><b>Execução paralela (sombra)</b></td><td>A IA roda sobre casos já tratados por pessoas e os resultados são confrontados</td><td>Validações, classificações e auditorias</td><td>16926: ShieldPlan sobre arquivos já revisados</td><td><span class="chip">Alta</span> para qualidade</td></tr>
+        <tr><td><b>Antes e depois</b></td><td>Compara a linha de base com o período com IA</td><td>Quando não há como dividir os casos</td><td>18047: tempo de análise técnica antes e depois</td><td><span class="chip">Média</span></td></tr>
+        <tr><td><b>Estimativa ajustada</b></td><td>O especialista estima quanto do resultado veio da IA e o grau de confiança</td><td>Último recurso</td><td>ENOVA-IDEIA-2026-0037: ganho de tempo do Chief of Staff</td><td><span class="chip">Baixa</span></td></tr>
+      </tbody>
+    </table></div>
+    <div class="label">Passo 4 · Isole o efeito da IA</div>
+    <p>Pergunte: o que mais mudou no período? Volume, regra, equipe, sazonalidade, clima. Se algo mudou, registre na ficha. Quando o método for estimativa, aplique os dois fatores de Phillips:</p>
+    <div class="formula">Benefício atribuível <span class="eq">=</span> Variação observada × Participação da IA (%) × Confiança da estimativa (%)</div>
+    <p>Exemplo: o tempo caiu 100 h/mês. O especialista atribui 70% à IA, com 80% de confiança. Benefício atribuível: 100 × 0,70 × 0,80 = <b>56 h/mês</b>.</p>
+    <div class="label">Fator de confiança de referência por fonte</div>
+    <p>Use esta tabela para definir a confiança da estimativa. Ela vale tanto para a estimativa do potencial quanto para o ajuste de estimativas na medição.</p>
+    <div class="tbl"><table>
+      <thead><tr><th>Fonte do número</th><th>Exemplos</th><th class="num">Confiança de referência</th><th>Natureza</th></tr></thead>
+      <tbody>
+        <tr><td><b>Dado de sistema</b></td><td>Extração do SAP, sistema comercial, ADMS, WebSijur; tarifa e custo oficiais</td><td class="num"><span class="chip">100%</span></td><td><span class="tag">M</span> Medido</td></tr>
+        <tr><td><b>Piloto medido com linha de base</b></td><td>Cronometragem de amostra antes e depois; execução paralela no Bootcamp</td><td class="num"><span class="chip">90% a 100%</span></td><td><span class="tag">M</span> Medido</td></tr>
+        <tr><td><b>Registro da área</b></td><td>Planilha de controle, relatório interno, e-mails datados</td><td class="num"><span class="chip">70% a 80%</span></td><td><span class="tag">E</span> Estimado</td></tr>
+        <tr><td><b>Especialista da área</b></td><td>Opinião de quem conhece o processo, sem registro</td><td class="num"><span class="chip">50% a 60%</span></td><td><span class="tag">D</span> Declarado</td></tr>
+        <tr><td><b>Fornecedor ou mercado</b></td><td>Benchmark, estudo externo, promessa de ferramenta</td><td class="num"><span class="chip">Até 50%</span></td><td>Só como referência, não como premissa principal</td></tr>
+      </tbody>
+    </table></div>
+    <p><b>Como aplicar:</b> use um único fator para a estimativa, definido pela premissa-chave mais fraca. Se o volume vem do sistema (100%) e o ganho por unidade vem do especialista (50% a 60%), a confiança da estimativa fica na faixa do especialista. Na dúvida, use o menor valor da faixa.</p>
+    <p class="note">Faixas de referência propostas pela equipe de Impacto da Inovação, inspiradas no ajuste por confiança da Metodologia ROI de Phillips. Valores fora da faixa precisam de justificativa na ficha.</p>
+  </div>
+</section>
+
+<!-- 06 -->
+<section id="s6" class="wrap">
+  <div class="shead"><div class="num">06</div><div class="bar"><small>Degrau 2</small><h2>Qualidade da IA: quem mede o quê</h2></div></div>
+  <div class="stack">
+    <p>A qualidade técnica do modelo é decisão do squad. Ele escolhe a métrica que faz sentido para a sua IA e reporta o resultado na ficha. Para o valor, essa métrica só precisa responder a duas perguntas.</p>
+    <div class="types">
+      <div class="type"><div class="k">Pergunta 1</div><h3>Comparado com o quê?</h3><p>O acerto ou o erro da IA só vale quando é comparado com o método atual, no mesmo período. Noventa por cento de acerto pode ser ótimo ou pior que o jeito de fazer hoje.</p></div>
+      <div class="type"><div class="k">Pergunta 2</div><h3>O que muda com esse acerto?</h3><p>Qual tarefa fica mais rápida ou qual decisão muda. É essa ligação que leva aos degraus 3 e 4 e ao valor.</p></div>
+    </div>
+    <div class="label">Exemplos de métrica que o squad pode reportar</div>
+    <div class="tbl"><table>
+      <thead><tr><th>Se a IA…</th><th>Métrica comum</th><th>Como mostrar na ficha</th></tr></thead>
+      <tbody>
+        <tr><td>sugere algo que uma pessoa confirma</td><td>Taxa de aceitação</td><td>% de sugestões aceitas sem ajuste</td></tr>
+        <tr><td>gera textos, pareceres ou resumos</td><td>Avaliação da área</td><td>% de respostas corretas numa amostra avaliada pela área</td></tr>
+        <tr><td>aponta casos (fraude, OS, medição suspeita)</td><td>Taxa de acerto dos apontamentos</td><td>% confirmados, ao lado do acerto da seleção atual</td></tr>
+        <tr><td>faz previsões (carga, balanço, demanda)</td><td>Erro de previsão</td><td>Erro médio da IA ao lado do erro do método atual</td></tr>
+      </tbody>
+    </table></div>
+    <p class="thesis"><b>Lembrete:</b> qualidade da IA é condição, não resultado. Uma IA com 95% de acerto que ninguém usa tem impacto zero.</p>
+  </div>
+</section>
+
+<!-- 07 -->
+<section id="s7" class="wrap">
+  <div class="shead"><div class="num">07</div><div class="bar"><small>Degrau 4</small><h2>Do resultado operacional ao impacto</h2></div></div>
+  <div class="stack">
+    <p>O impacto de uma iniciativa pode ser de dois tipos. Os dois devem ser registrados, mas só o quantitativo financeiro validado entra no Impacto da Inovação.</p>
+    <div class="types">
+      <div class="type"><div class="k">Tipo 1</div><h3>Impacto quantitativo</h3><p>Expresso em número: reais, horas, quantidade, percentual. É calculado com fórmula, premissa oficial e evidência.</p><div class="label" style="margin:0">Exemplos</div><p>R$ 1,10 MM de redução de custos (Blindagem do trafo, jan a ago/2026) · R$ 1,27 MM de receita recuperada (ILUMI, fev a ago/2026) · horas liberadas por ano · erro de previsão de 8% para 5%</p><p class="n">O financeiro, depois de validado, entra no Impacto da Inovação.</p></div>
+      <div class="type"><div class="k">Tipo 2</div><h3>Impacto qualitativo</h3><p>Benefício real que não tem conversão confiável em número ou em reais. É descrito com clareza e sustentado por evidência: relato da área, pesquisa, registro.</p><div class="label" style="margin:0">Exemplos</div><p>Combate a perdas e impacto social e imagem (Blindagem do trafo) · mais acurácia no cadastro de iluminação pública (ILUMI) · mais governança e rastreabilidade de decisões · mais segurança e confiança das equipes</p><p class="n">É reportado junto ao resultado, mas não entra em reais.</p></div>
+    </div>
+    <p class="thesis"><b>Regra prática:</b> quantifique tudo o que for possível, com premissa e fonte. O que não der para quantificar com segurança, descreva como qualitativo. Não force um número onde não existe base para ele.</p>
+    <p>A partir daqui, o foco é o impacto quantitativo: ele só conta quando o ganho operacional é convertido em valor com fórmula, premissa e evidência.</p>
+    <div class="label">Produtividade (tipo A) · primeiro em horas, depois em reais</div>
+    <div class="formula">HH liberadas/mês <span class="eq">=</span> (Tempo antes − Tempo depois) × Volume/mês ÷ 60</div>
+    <div class="formula">Valor das HH <span class="eq">=</span> HH liberadas × Custo-hora de referência</div>
+    <p class="note">Tempos em minutos por caso. O custo-hora de referência é único para o programa e informado pela equipe de Impacto da Inovação; o autor não cria o seu.</p>
+    <div class="label">Receita e perdas (tipo C) · só o ganho a mais em relação ao método atual</div>
+    <div class="formula">Receita recuperada atribuível <span class="eq">=</span> (Acerto com IA − Acerto atual) × Nº de ações × Valor médio recuperado</div>
+    <p>Se as inspeções manuais já acertam 30% e as indicadas pela IA acertam 45%, só os 15 pontos de diferença são da IA.</p>
+    <div class="label">Pagamentos, falhas e multas (tipo D)</div>
+    <div class="formula">Custo evitado <span class="eq">=</span> Eventos evitados × Custo médio do evento</div>
+    <p>O custo médio do evento precisa de fonte: histórico de multas, custo médio de reparo, valor de glosa. Valor glosado de fato é redução de custo e entra pelo valor real, sem fórmula.</p>
+    <div class="label">Previsão e decisão (tipo E) · Reputação (tipo F)</div>
+    <p>Prever melhor não é impacto por si só. Mostre a decisão que mudou e o efeito dela, por exemplo "desembolso médio por acordo caiu de X para Y nos casos recomendados pela IA". Sem essa ligação, registre como benefício não monetário.</p>
+    <h3 style="font-size:22px;margin-top:12px">Regras de registro</h3>
+    <div class="tbl"><table>
+      <thead><tr><th>Regra</th><th>Na prática</th></tr></thead>
+      <tbody>
+        <tr><td><b>Piloto não é ano</b></td><td>O resultado do teste é registrado como medido. A projeção anual é outra linha, marcada como Estimado, com a premissa de volume escrita.</td></tr>
+        <tr><td><b>Não conte duas vezes</b></td><td>Se o ganho já aparece em receita recuperada, as horas da mesma tarefa não entram de novo como valor.</td></tr>
+        <tr><td><b>Medido não é validado</b></td><td>No indicador de Impacto da Inovação entra o valor validado. O que é medido em um mês é validado no mês seguinte, com evidência.</td></tr>
+        <tr><td><b>Benefício econômico não é corte de orçamento</b></td><td>Liberar horas é ganho real do projeto, mesmo sem redução de quadro. Diga na ficha para onde as horas foram direcionadas.</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+</section>
+
+<!-- 08 -->
+<section id="s8" class="wrap">
+  <div class="shead"><div class="num">08</div><div class="bar"><small>Modelo para preencher</small><h2>Ficha padrão de medição</h2></div></div>
+  <div class="ficha">
+    <p>Toda iniciativa enova IA preenche esta ficha no início do teste e a atualiza a cada medição. Ela é a evidência principal para a validação do impacto.</p>
+    <div class="bloco"><h3><span>Bloco 1</span>Identificação</h3><div class="tbl"><table class="fill"><tbody>
+      <tr><td>ID da iniciativa</td><td><span class="blank"></span></td></tr>
+      <tr><td>Nome da iniciativa</td><td><span class="blank"></span></td></tr>
+      <tr><td>Autor e squad</td><td><span class="blank"></span></td></tr>
+      <tr><td>Empresa e área</td><td><span class="blank"></span></td></tr>
+      <tr><td>Dono do benefício (gestor que confirma o resultado)</td><td><span class="blank"></span></td></tr>
+      <tr><td>Tipo de valor principal e secundário</td><td><span class="blank"></span></td></tr>
+      <tr><td>Unidade medida (caso, OS, processo, consulta…)</td><td><span class="blank"></span></td></tr>
+      <tr><td>Volume mensal da unidade e fonte</td><td><span class="blank"></span></td></tr>
+    </tbody></table></div></div>
+
+    <div class="bloco"><h3><span>Bloco 2</span>Hipótese de valor</h3>
+      <p class="sentence"><b>Se</b> a IA [faz o quê], <b>então</b> o processo [muda como], <b>o que gera</b> [qual resultado], <b>medido por</b> [qual indicador].</p></div>
+
+    <div class="bloco"><h3><span>Bloco 3</span>Indicadores</h3>
+      <p class="note" style="margin-bottom:8px">Natureza: <span class="tag">M</span> Medido · <span class="tag">E</span> Estimado · <span class="tag">D</span> Declarado</p>
+      <div class="tbl"><table style="min-width:860px">
+      <thead><tr><th>Degrau</th><th>Indicador</th><th>Fórmula</th><th>Unidade</th><th>Fonte</th><th>Linha de base</th><th>Meta</th><th>Resultado</th><th>Natureza</th><th>Frequência</th></tr></thead><tbody>
+      <tr><td><b>1 · Uso</b></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+      <tr><td><b>2 · Qualidade da IA</b></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+      <tr><td><b>3 · Mudança no processo</b></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+      <tr><td><b>4 · Impacto</b></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+    </tbody></table></div></div>
+
+    <div class="bloco"><h3><span>Bloco 4</span>Método de comparação</h3><div class="tbl"><table class="fill"><tbody>
+      <tr><td>Método (controle, sombra, antes e depois, estimativa)</td><td><span class="blank"></span></td></tr>
+      <tr><td>Período da linha de base</td><td><span class="blank"></span></td></tr>
+      <tr><td>Período com IA</td><td><span class="blank"></span></td></tr>
+      <tr><td>O que mais mudou no período</td><td><span class="blank"></span></td></tr>
+      <tr><td>Participação da IA e confiança (só se estimativa)</td><td><span class="blank"></span></td></tr>
+    </tbody></table></div></div>
+
+    <div class="bloco"><h3><span>Bloco 5</span>Conversão em valor</h3><div class="tbl"><table class="fill"><tbody>
+      <tr><td>Categoria de retorno proposta</td><td><span class="blank"></span></td></tr>
+      <tr><td>Fórmula usada (seção 07)</td><td><span class="blank"></span></td></tr>
+      <tr><td>Premissas, com fonte de cada uma</td><td><span class="blank"></span></td></tr>
+      <tr><td>Valor medido no período (R$ ou HH)</td><td><span class="blank"></span></td></tr>
+      <tr><td>Projeção anual (sempre Estimado) e premissa de volume</td><td><span class="blank"></span></td></tr>
+      <tr><td>Destino das horas liberadas</td><td><span class="blank"></span></td></tr>
+    </tbody></table></div></div>
+
+    <div class="bloco"><h3><span>Bloco 6</span>Evidências, limites e validação</h3><div class="tbl"><table class="fill"><tbody>
+      <tr><td>Evidências anexadas (extrações, prints, planilhas, e-mails)</td><td><span class="blank"></span></td></tr>
+      <tr><td>Impactos qualitativos observados, com evidência</td><td><span class="blank"></span></td></tr>
+      <tr><td>Limitações e riscos da medição</td><td><span class="blank"></span></td></tr>
+      <tr><td>Confirmação do dono do benefício (nome e data)</td><td><span class="blank"></span></td></tr>
+      <tr><td>Status (em medição, enviado, validado, devolvido)</td><td><span class="blank"></span></td></tr>
+    </tbody></table></div></div>
+  </div>
+</section>
+
+<!-- 09 -->
+<section id="s9" class="wrap">
+  <div class="shead"><div class="num">09</div><div class="bar"><small>Iniciativa 16826</small><h2>Exemplo preenchido</h2></div></div>
+  <div class="stack">
+    <p>Classificação inteligente para encerramento de processos judiciais. O volume (2.000 processos/mês) e a equipe (4 pessoas) vêm da descrição do autor. <b>Os demais números são fictícios</b>, só para mostrar o preenchimento.</p>
+    <div class="example">
+      <p><b>Unidade:</b> processo encerrado · <b>Tipo de valor:</b> A · Produtividade (principal), B · Qualidade (secundário)</p>
+      <p class="sentence" style="background:var(--bg)"><b>Se</b> a IA lê a decisão final e sugere o motivo do encerramento, <b>então</b> o analista passa a conferir em vez de ler o documento inteiro, <b>o que gera</b> menos tempo por processo e menos erros de classificação, <b>medido por</b> minutos por processo e % de sugestões aceitas.</p>
+    </div>
+    <div class="tbl"><table>
+      <thead><tr><th>Degrau</th><th>Indicador</th><th class="num">Linha de base</th><th class="num">Meta</th><th class="num">Resultado</th><th>Natureza</th></tr></thead>
+      <tbody>
+        <tr><td><b>1 · Uso</b></td><td>Processos do lote tratados com sugestão da IA</td><td class="num">0%</td><td class="num">90%</td><td class="num">85%</td><td><span class="tag">M</span></td></tr>
+        <tr><td><b>2 · Qualidade da IA</b></td><td>Sugestões aceitas sem ajuste</td><td class="num">—</td><td class="num">85%</td><td class="num">88%</td><td><span class="tag">M</span></td></tr>
+        <tr><td><b>3 · Processo</b></td><td>Tempo médio por processo</td><td class="num">6,0 min</td><td class="num">3,0 min</td><td class="num">2,5 min</td><td><span class="tag">M</span></td></tr>
+        <tr><td><b>4 · Impacto</b></td><td>HH liberadas por mês</td><td class="num">—</td><td class="num">100 h</td><td class="num">117 h</td><td><span class="tag">E</span></td></tr>
+      </tbody>
+    </table></div>
+    <p><b>Método:</b> execução paralela em 100 processos já encerrados (qualidade) e cronometragem de 100 processos antes e 100 depois (tempo). Nenhuma mudança de equipe ou regra no período.</p>
+    <div class="formula">(6,0 − 2,5) × 2.000 ÷ 60 <span class="eq">=</span> 117 h/mês</div>
+    <p>O valor em reais aplica o custo-hora de referência do programa. A natureza é <b>Estimado</b> porque o tempo vem de amostra e o volume é a média mensal. <b>Destino das horas:</b> análise de causa-raiz das perdas para jurimetria.</p>
+    <p class="thesis"><b>Por que este exemplo é bom:</b> os quatro degraus estão medidos, a linha de base veio antes da IA, o método está declarado e o impacto sai de uma fórmula que qualquer pessoa consegue refazer.</p>
+  </div>
+</section>
+
+<!-- 10 -->
+<section id="s10" class="wrap">
+  <div class="shead"><div class="num">10</div><div class="bar"><small>Bootcamp · Demo Day · Captura</small><h2>Calendário de medição</h2></div></div>
+  <div class="stack">
+    <p>A medição acompanha o Bootcamp (12 semanas, Demo Day em 30/11/2026) e continua depois dele até a captura do impacto.</p>
+    <div class="tbl"><table>
+      <thead><tr><th>Momento</th><th>O que fazer</th><th>Entrega</th></tr></thead>
+      <tbody>
+        <tr><td><b>Antes de ligar a IA</b></td><td>Preencher blocos 1 e 2 da ficha; registrar a linha de base</td><td>Ficha com linha de base</td></tr>
+        <tr><td><b>Durante o teste</b></td><td>Medir degraus 1, 2 e 3 a cada ciclo; anotar o que mais mudou no período</td><td>Ficha atualizada (blocos 3 e 4)</td></tr>
+        <tr><td><b>Demo Day · 30/11/2026</b></td><td>Apresentar o resultado medido no teste e a projeção, separados</td><td>Ficha completa com bloco 5</td></tr>
+        <tr><td><b>Após o Demo Day</b></td><td>Medir o degrau 4 mensalmente na operação; enviar evidências para validação</td><td>Medição mensal, validada no mês seguinte</td></tr>
+      </tbody>
+    </table></div>
+    <p class="note">O prazo de acompanhamento após o Demo Day e o fluxo de validação seguem a regra vigente do processo de Impacto da Inovação.</p>
+  </div>
+</section>
+
+<!-- 11 -->
+<section id="s11" class="wrap">
+  <div class="shead"><div class="num">11</div><div class="bar"><small>Antes de enviar</small><h2>Erros comuns e checklist</h2></div></div>
+  <div class="stack">
+    <p>Os erros abaixo aparecem com frequência em propostas de IA, inclusive nas descrições do Bootcamp. Cada um tem uma correção simples.</p>
+    <div class="tbl"><table>
+      <thead><tr><th>Erro comum</th><th>Por que é problema</th><th>Como corrigir</th></tr></thead>
+      <tbody>
+        <tr><td>Meta em faixa larga sem base ("redução de 30% a 60%")</td><td>Não dá para saber se o resultado foi bom</td><td>Medir a linha de base e definir uma meta única</td></tr>
+        <tr><td>Promessa absoluta ("100% de integridade")</td><td>Nenhuma IA acerta sempre; a promessa perde credibilidade</td><td>Meta realista, com acerto medido contra o método atual</td></tr>
+        <tr><td>Medir só a acurácia do modelo</td><td>Acerto sem uso e sem mudança de processo não gera impacto</td><td>Medir os quatro degraus</td></tr>
+        <tr><td>Atribuir à IA um indicador amplo (DEC, FEC, IASC)</td><td>Esses indicadores dependem de muitos fatores</td><td>Medir o efeito local e citar o indicador amplo como contribuição</td></tr>
+        <tr><td>Anualizar o piloto direto</td><td>Teste de poucas semanas raramente se repete igual o ano todo</td><td>Registrar medido e projeção separados, com premissa</td></tr>
+        <tr><td>Somar horas e reais da mesma tarefa</td><td>Conta o mesmo ganho duas vezes</td><td>Uma forma de registro por ganho</td></tr>
+        <tr><td>"Não sei estimar ainda" sem plano</td><td>O valor nunca aparece</td><td>Definir a unidade e cronometrar uma amostra</td></tr>
+      </tbody>
+    </table></div>
+    <h3 style="font-size:22px;margin-top:12px">Checklist do autor <span class="progress" id="prog">0 de 8</span></h3>
+    <ul class="check" id="checklist">
+      <li><label><input type="checkbox" id="c1"><span>A unidade e o volume mensal estão definidos, com fonte</span></label></li>
+      <li><label><input type="checkbox" id="c2"><span>A linha de base foi registrada antes da IA entrar</span></label></li>
+      <li><label><input type="checkbox" id="c3"><span>Há pelo menos um indicador em cada degrau, do 1 ao 4</span></label></li>
+      <li><label><input type="checkbox" id="c4"><span>O método de comparação está declarado</span></label></li>
+      <li><label><input type="checkbox" id="c5"><span>Cada número está marcado como Medido, Estimado ou Declarado</span></label></li>
+      <li><label><input type="checkbox" id="c6"><span>As premissas têm fonte</span></label></li>
+      <li><label><input type="checkbox" id="c8"><span>O dono do benefício confirmou o resultado</span></label></li>
+      <li><label><input type="checkbox" id="c9"><span>As evidências estão anexadas</span></label></li>
+    </ul>
+  </div>
+</section>
+
+<!-- 12 -->
+<section id="s12" class="wrap">
+  <div class="shead"><div class="num">12</div><div class="bar"><small>Consulta</small><h2>Glossário e referências</h2></div></div>
+  <div class="stack">
+    <div class="tbl"><table>
+      <thead><tr><th>Termo</th><th>Significado</th></tr></thead>
+      <tbody>
+        <tr><td><b>Linha de base</b></td><td>Retrato do processo antes da IA, usado como comparação</td></tr>
+        <tr><td><b>Unidade</b></td><td>O item que a IA trata: processo, OS, cadastro, consulta</td></tr>
+        <tr><td><b>Degrau</b></td><td>Cada nível da escada de valor, do uso ao impacto</td></tr>
+        <tr><td><b>Isolamento do efeito</b></td><td>Separar o resultado da IA do resultado de outros fatores</td></tr>
+        <tr><td><b>Execução paralela (sombra)</b></td><td>Rodar a IA sobre casos já tratados por pessoas e comparar</td></tr>
+        <tr><td><b>Dono do benefício</b></td><td>Gestor da área de negócio que confirma o resultado</td></tr>
+        <tr><td><b>Medido, Estimado, Declarado</b></td><td>Natureza do número: dado de sistema, cálculo com premissa ou opinião de especialista</td></tr>
+        <tr><td><b>Validado</b></td><td>Valor aprovado no processo de Impacto da Inovação, que entra no indicador</td></tr>
+      </tbody>
+    </table></div>
+    <div class="label">Referências</div>
+    <ul style="margin:0;padding-left:20px;display:grid;gap:6px">
+      <li>Phillips, J. J. Metodologia ROI (ROI Institute): níveis de avaliação e princípios orientadores. <a href="https://roiinstitute.net/wp-content/uploads/2022/11/2022.11.07-How-to-Ensure-your-Programs-Deliver-Value__participant.pdf" target="_blank" rel="noopener">Princípios orientadores</a> · <a href="https://roiinstitute.net/wp-content/uploads/2017/10/Comparison-of-Kirkpatrick-and-Phillips-1.pdf" target="_blank" rel="noopener">Comparação Kirkpatrick e Phillips</a></li>
+      <li>Project Management Institute. <a href="https://www.pmi.org/shop/p-/book/benefits-realization-management-a-practice-guide/00101612401" target="_blank" rel="noopener">Benefits Realization Management: A Practice Guide</a>, 2019.</li>
+      <li>Project Management Institute. <a href="https://www.pmi.org/blog/6-stages-to-run-a-successful-ai-project" target="_blank" rel="noopener">As seis fases de um projeto de IA (PMI-CPMAI)</a>, 2025.</li>
+      <li>Grupo Energisa. Catálogo das iniciativas do Bootcamp de Prototipação enova IA, Ciclo 2026 (documento interno).</li>
+    </ul>
+  </div>
+</section>
+</main>
+
+<footer><div class="wrap"><span>Grupo Energisa · Programa enova · Manual de Valor enova IA</span><span>Versão 1 · outubro de 2026</span></div></footer>
+
+<script>
+(function(){
+  var boxes=[].slice.call(document.querySelectorAll('#checklist input'));
+  var prog=document.getElementById('prog');
+  function load(){try{var s=JSON.parse(localStorage.getItem('enova-ia-check-v2')||'[]');boxes.forEach(function(b,i){b.checked=!!s[i];});}catch(e){}}
+  function save(){try{localStorage.setItem('enova-ia-check-v2',JSON.stringify(boxes.map(function(b){return b.checked;})));}catch(e){}}
+  function upd(){prog.textContent=boxes.filter(function(b){return b.checked;}).length+' de '+boxes.length;}
+  load();upd();
+  boxes.forEach(function(b){b.addEventListener('change',function(){save();upd();});});
+})();
+</script>
+
+</body></html>

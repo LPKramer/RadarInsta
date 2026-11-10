@@ -1,0 +1,140 @@
+ibge_id,nome,microrregiao,regiao_imediata,populacao
+1700251,Abreulândia,Miracema do Tocantins,Paraíso do Tocantins,2576
+1700301,Aguiarnópolis,Bico do Papagaio,Tocantinópolis,4497
+1700350,Aliança do Tocantins,Gurupi,Gurupi,5147
+1700400,Almas,Dianópolis,Dianópolis,6499
+1700707,Alvorada,Gurupi,Gurupi,8802
+1701002,Ananás,Bico do Papagaio,Araguaína,10325
+1701051,Angico,Bico do Papagaio,Araguaína,2876
+1701101,Aparecida do Rio Negro,Porto Nacional,Palmas,4856
+1701309,Aragominas,Araguaína,Araguaína,5290
+1701903,Araguacema,Miracema do Tocantins,Paraíso do Tocantins,5927
+1702000,Araguaçu,Rio Formoso,Gurupi,8133
+1702109,Araguaína,Araguaína,Araguaína,171301
+1702158,Araguanã,Araguaína,Araguaína,4310
+1702208,Araguatins,Bico do Papagaio,Araguatins,31918
+1702307,Arapoema,Araguaína,Araguaína,5550
+1702406,Arraias,Dianópolis,Dianópolis,10287
+1702554,Augustinópolis,Bico do Papagaio,Araguatins,17484
+1702703,Aurora do Tocantins,Dianópolis,Dianópolis,3342
+1702901,Axixá do Tocantins,Bico do Papagaio,Araguatins,10262
+1703008,Babaçulândia,Araguaína,Araguaína,7880
+1703057,Bandeirantes do Tocantins,Araguaína,Colinas do Tocantins,3407
+1703073,Barra do Ouro,Jalapão,Araguaína,4476
+1703107,Barrolândia,Miracema do Tocantins,Paraíso do Tocantins,4846
+1703206,Bernardo Sayão,Miracema do Tocantins,Colinas do Tocantins,4229
+1703305,Bom Jesus do Tocantins,Porto Nacional,Guaraí,4038
+1703602,Brasilândia do Tocantins,Miracema do Tocantins,Colinas do Tocantins,1974
+1703701,Brejinho de Nazaré,Gurupi,Porto Nacional,4725
+1703800,Buriti do Tocantins,Bico do Papagaio,Araguatins,10307
+1703826,Cachoeirinha,Bico do Papagaio,Tocantinópolis,1961
+1703842,Campos Lindos,Jalapão,Araguaína,8653
+1703867,Cariri do Tocantins,Gurupi,Gurupi,4007
+1703883,Carmolândia,Araguaína,Araguaína,2201
+1703891,Carrasco Bonito,Bico do Papagaio,Araguatins,3318
+1703909,Caseara,Miracema do Tocantins,Paraíso do Tocantins,4847
+1704105,Centenário,Jalapão,Guaraí,2131
+1704600,Chapada de Areia,Rio Formoso,Paraíso do Tocantins,1501
+1705102,Chapada da Natividade,Dianópolis,Porto Nacional,3117
+1705508,Colinas do Tocantins,Araguaína,Colinas do Tocantins,34233
+1705557,Combinado,Dianópolis,Dianópolis,4756
+1705607,Conceição do Tocantins,Dianópolis,Dianópolis,3887
+1706001,Couto Magalhães,Miracema do Tocantins,Guaraí,5331
+1706100,Cristalândia,Rio Formoso,Paraíso do Tocantins,6371
+1706258,Crixás do Tocantins,Gurupi,Gurupi,1470
+1706506,Darcinópolis,Bico do Papagaio,Araguaína,5827
+1707009,Dianópolis,Dianópolis,Dianópolis,17739
+1707108,Divinópolis do Tocantins,Miracema do Tocantins,Paraíso do Tocantins,7024
+1707207,Dois Irmãos do Tocantins,Miracema do Tocantins,Miracema do Tocantins,6327
+1707306,Dueré,Rio Formoso,Gurupi,4248
+1707405,Esperantina,Bico do Papagaio,Araguatins,7530
+1707553,Fátima,Rio Formoso,Porto Nacional,3467
+1707652,Figueirópolis,Gurupi,Gurupi,5211
+1707702,Filadélfia,Araguaína,Araguaína,7712
+1708205,Formoso do Araguaia,Rio Formoso,Gurupi,18881
+1708254,Tabocão,Miracema do Tocantins,Guaraí,3455
+1708304,Goianorte,Miracema do Tocantins,Guaraí,4738
+1709005,Goiatins,Jalapão,Araguaína,12433
+1709302,Guaraí,Miracema do Tocantins,Guaraí,24775
+1709500,Gurupi,Gurupi,Gurupi,85125
+1709807,Ipueiras,Porto Nacional,Porto Nacional,1590
+1710508,Itacajá,Jalapão,Colinas do Tocantins,6819
+1710706,Itaguatins,Bico do Papagaio,Araguatins,5172
+1710904,Itapiratins,Jalapão,Colinas do Tocantins,3577
+1711100,Itaporã do Tocantins,Miracema do Tocantins,Guaraí,2404
+1711506,Jaú do Tocantins,Gurupi,Gurupi,3334
+1711803,Juarina,Miracema do Tocantins,Colinas do Tocantins,2243
+1711902,Lagoa da Confusão,Rio Formoso,Paraíso do Tocantins,15288
+1711951,Lagoa do Tocantins,Jalapão,Palmas,3516
+1712009,Lajeado,Porto Nacional,Palmas,3357
+1712157,Lavandeira,Dianópolis,Dianópolis,1626
+1712405,Lizarda,Jalapão,Palmas,2999
+1712454,Luzinópolis,Bico do Papagaio,Tocantinópolis,2717
+1712504,Marianópolis do Tocantins,Miracema do Tocantins,Paraíso do Tocantins,4615
+1712702,Mateiros,Jalapão,Palmas,2748
+1712801,Maurilândia do Tocantins,Bico do Papagaio,Tocantinópolis,3095
+1713205,Miracema do Tocantins,Miracema do Tocantins,Miracema do Tocantins,18566
+1713304,Miranorte,Miracema do Tocantins,Miracema do Tocantins,12701
+1713601,Monte do Carmo,Porto Nacional,Porto Nacional,5694
+1713700,Monte Santo do Tocantins,Miracema do Tocantins,Paraíso do Tocantins,2396
+1713809,Palmeiras do Tocantins,Bico do Papagaio,Tocantinópolis,4872
+1713957,Muricilândia,Araguaína,Araguaína,3367
+1714203,Natividade,Dianópolis,Porto Nacional,8754
+1714302,Nazaré,Bico do Papagaio,Tocantinópolis,4521
+1714880,Nova Olinda,Araguaína,Araguaína,10367
+1715002,Nova Rosalândia,Rio Formoso,Paraíso do Tocantins,3362
+1715101,Novo Acordo,Jalapão,Palmas,3969
+1715150,Novo Alegre,Dianópolis,Dianópolis,1846
+1715259,Novo Jardim,Dianópolis,Dianópolis,2230
+1715507,Oliveira de Fátima,Rio Formoso,Porto Nacional,1164
+1715705,Palmeirante,Araguaína,Colinas do Tocantins,4798
+1715754,Palmeirópolis,Gurupi,Gurupi,6975
+1716109,Paraíso do Tocantins,Rio Formoso,Paraíso do Tocantins,52360
+1716208,Paranã,Dianópolis,Gurupi,10542
+1716307,Pau D'Arco,Araguaína,Araguaína,4043
+1716505,Pedro Afonso,Porto Nacional,Guaraí,14055
+1716604,Peixe,Gurupi,Gurupi,9317
+1716653,Pequizeiro,Miracema do Tocantins,Guaraí,4921
+1716703,Colméia,Miracema do Tocantins,Guaraí,8941
+1717008,Pindorama do Tocantins,Dianópolis,Porto Nacional,4478
+1717206,Piraquê,Araguaína,Araguaína,2282
+1717503,Pium,Rio Formoso,Paraíso do Tocantins,7128
+1717800,Ponte Alta do Bom Jesus,Dianópolis,Dianópolis,4220
+1717909,Ponte Alta do Tocantins,Jalapão,Porto Nacional,7586
+1718006,Porto Alegre do Tocantins,Dianópolis,Dianópolis,2866
+1718204,Porto Nacional,Porto Nacional,Porto Nacional,64418
+1718303,Praia Norte,Bico do Papagaio,Araguatins,9044
+1718402,Presidente Kennedy,Miracema do Tocantins,Guaraí,3047
+1718451,Pugmil,Rio Formoso,Paraíso do Tocantins,2193
+1718501,Recursolândia,Jalapão,Guaraí,3421
+1718550,Riachinho,Bico do Papagaio,Araguaína,3960
+1718659,Rio da Conceição,Dianópolis,Dianópolis,1768
+1718709,Rio dos Bois,Miracema do Tocantins,Miracema do Tocantins,2738
+1718758,Rio Sono,Jalapão,Palmas,4841
+1718808,Sampaio,Bico do Papagaio,Araguatins,4215
+1718840,Sandolândia,Rio Formoso,Gurupi,3723
+1718865,Santa Fé do Araguaia,Araguaína,Araguaína,7216
+1718881,Santa Maria do Tocantins,Porto Nacional,Guaraí,2680
+1718899,Santa Rita do Tocantins,Gurupi,Porto Nacional,2219
+1718907,Santa Rosa do Tocantins,Dianópolis,Porto Nacional,4653
+1719004,Santa Tereza do Tocantins,Jalapão,Palmas,2781
+1720002,Santa Terezinha do Tocantins,Bico do Papagaio,Tocantinópolis,2406
+1720101,São Bento do Tocantins,Bico do Papagaio,Araguatins,5654
+1720150,São Félix do Tocantins,Jalapão,Palmas,1783
+1720200,São Miguel do Tocantins,Bico do Papagaio,Araguatins,13241
+1720259,São Salvador do Tocantins,Gurupi,Gurupi,2385
+1720309,São Sebastião do Tocantins,Bico do Papagaio,Araguatins,4100
+1720499,São Valério,Dianópolis,Gurupi,4422
+1720655,Silvanópolis,Porto Nacional,Porto Nacional,5108
+1720804,Sítio Novo do Tocantins,Bico do Papagaio,Araguatins,10830
+1720853,Sucupira,Gurupi,Gurupi,1577
+1720903,Taguatinga,Dianópolis,Dianópolis,14011
+1720937,Taipas do Tocantins,Dianópolis,Dianópolis,2021
+1720978,Talismã,Gurupi,Gurupi,2456
+1721000,Palmas,Porto Nacional,Palmas,302692
+1721109,Tocantínia,Porto Nacional,Miracema do Tocantins,7459
+1721208,Tocantinópolis,Bico do Papagaio,Tocantinópolis,22615
+1721257,Tupirama,Miracema do Tocantins,Guaraí,1909
+1721307,Tupiratins,Miracema do Tocantins,Colinas do Tocantins,1874
+1722081,Wanderlândia,Araguaína,Araguaína,10522
+1722107,Xambioá,Araguaína,Araguaína,10517

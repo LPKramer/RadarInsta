@@ -1,0 +1,19 @@
+.env
+.venv/
+__pycache__/
+.pytest_cache/
+
+# Dados da coleta. Sobem o banco (data/radar.db, uma cópia consistente feita para o commit), as capas, a mídia dos
+# stories e as planilhas exportadas. Ficam fora as sessões logadas das contas do Instagram (navegador/), as
+# respostas brutas da coleta (raw/), os logs e as cópias de segurança do banco.
+data/*
+!data/capas/
+!data/stories/
+!data/export/
+
+# Gerado por python -m radar site
+site/
+
+# Ferramentas de fora do programa (cópias de projetos de terceiros, com git próprio)
+.claude/
+agent-skills/
