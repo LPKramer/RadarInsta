@@ -13,12 +13,17 @@ para data/alertas.txt.
 Segurança das contas: os trabalhadores entram com alguns minutos de diferença; uma conta que o Instagram barra para
 sozinha e as outras assumem as páginas dela; se duas forem barradas em menos de uma hora, o problema provavelmente é
 a conexão, e todas param (parada geral). Contas logadas com a vigilância já rodando entram sozinhas.
+
+Volta (`vigiar --volta`): em vez de ficar rodando, passa uma vez por todas as páginas, por prioridade, e termina. O
+agendar.ps1 dispara duas voltas por dia; os stories duram 24 h, então duas voltas não perdem nenhum.
 """
 import random
+import sqlite3
 import time
 from collections import Counter
 from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 from datetime import datetime, timedelta, timezone
+from functools import partial
 
 from . import config, db, perfis
 
@@ -27,6 +32,9 @@ TIPOS_NOTICIA = ["portal_noticias", "pagina_cidade_comunidade", "policial_planta
 RESERVA_MAX = timedelta(minutes=30)  # reserva mais velha que isso é de um trabalhador que caiu: vale de novo
 ESPERA_MAXIMA = 300  # sem página vencida, o trabalhador dorme no máximo isso antes de olhar de novo
 RECALCULAR = timedelta(minutes=30)  # prioridades mudam quando aparece menção nova
+CONSOLIDAR = timedelta(minutes=10)  # de quanto em quanto tempo agrupa as menções novas da mesma notícia (fatos.py)
+REVISAR_DIAS = 3  # a revisão dos agrupamentos separados olha os pares com um agrupamento desses últimos dias
+OLHAR_SITES = timedelta(minutes=10)  # de quanto em quanto tempo vê se a rodada dos sites (a cada hora) venceu
 ARQUIVO_ALERTAS = config.DATA_DIR / "alertas.txt"
 ARQUIVO_PARAR = config.NAVEGADOR_DIR / "PARAR"  # existindo, todos os trabalhadores param
 ESCALONAR = 180  # segundos entre a entrada de um trabalhador e a do seguinte
@@ -35,6 +43,10 @@ JANELA_PARADA = 3600
 PROCURAR_CONTAS = 60  # de quanto em quanto tempo procura contas logadas depois do início
 MAX_CONTAS = 12  # cada Edge usa ~0,5 GB de memória
 RECUO_MAXIMO = 3  # visitas vazias seguidas dobram o intervalo até 2³ = 8 vezes (sempre dentro do prazo dos stories)
+# Leituras por página numa volta com 12 h desde a anterior, estimadas em nov/2026: a visita, a página de stories em
+# 30% a 55% delas (a volta da noite pega o dia) e ~10% de comentários, buscas e investigação. Depois de dias sem
+# vigia é mais (2,4 em 13/nov, recolhendo 2 dias).
+LEITURAS_POR_PAGINA_NA_VOLTA = 1.6
 TENTATIVAS = 3  # falha inesperada (o Edge não abriu, travou...): a conta tenta de novo até isso
 REINICIAR = 300  # segundos até a nova tentativa
 
@@ -68,6 +80,8 @@ def intervalos(con) -> dict[str, float]:
         "WHERE x.sobre_energia = 1")}
     influenciadores = {l[0] for l in con.execute(
         "SELECT username FROM listas WHERE rede = 'instagram' AND lista = 'influenciadores_to'")}
+    # As rádios aprovadas (radios.py): no mínimo a cada 6 h, para os vídeos chegarem à transcrição a tempo.
+    radios = {l[0] for l in con.execute("SELECT username FROM listas WHERE rede = 'instagram' AND lista = 'radios_to'")}
     resultado = {}
     for conta in monitoramento.monitoradas(con):
         u = conta["username"]
@@ -79,6 +93,8 @@ def intervalos(con) -> dict[str, float]:
             resultado[u] = config.VIGIA_HORAS["alta" if alta else "media"]
         else:
             resultado[u] = config.VIGIA_HORAS["baixa"]
+        if u in radios:
+            resultado[u] = min(resultado[u], config.VIGIA_HORAS["media"])
     return resultado
 
 
@@ -98,12 +114,18 @@ def _visitas(con) -> dict[str, tuple[str, int]]:
         "SELECT username, ultima_em, vazias FROM visitas WHERE rede = 'instagram'")}
 
 
-def atrasadas(con, agora: datetime, horas: dict[str, float]) -> list[tuple[float, str]]:
+def atrasadas(con, agora: datetime, horas: dict[str, float], volta: bool = False,
+              inicio: datetime | None = None) -> list[tuple[float, str]]:
     """Contas vencidas e livres, na ordem de visita, com o atraso (tempo desde a última visita ÷ prazo).
 
     Primeiro as que passaram do prazo dos stories (ou nunca foram visitadas), da mais velha para a mais nova e, no
     empate, as de intervalo menor: sem isso, com pouca capacidade, os stories das páginas de 24 h se perdem. Depois,
-    com a capacidade que sobra, as revisitas pela ordem de atraso."""
+    com a capacidade que sobra, as revisitas pela ordem de atraso.
+
+    Na volta (`volta=True`), vencida é toda página sem visita nas VIGIA_VOLTA_H horas antes de `inicio` (o começo da
+    volta; sem ele, `agora`), qualquer que seja o intervalo dela. Contando do começo, o que a volta já visitou não
+    entra de novo, mesmo que ela passe de VIGIA_VOLTA_H horas. Depois das que têm stories em risco, vão primeiro as de
+    prioridade maior (intervalo menor)."""
     visitas = _visitas(con)
     reservadas = _reservadas(con, agora)
     fila = []
@@ -113,6 +135,13 @@ def atrasadas(con, agora: datetime, horas: dict[str, float]) -> list[tuple[float
         ultima_em, vazias = visitas.get(username, (None, 0))
         ultima = perfis.ler_data(ultima_em)
         desde = float("inf") if ultima is None else (agora - ultima).total_seconds() / 3600
+        if volta:
+            sem_visita = desde if ultima is None else ((inicio or agora) - ultima).total_seconds() / 3600
+            if sem_visita >= config.VIGIA_VOLTA_H:
+                em_risco = desde >= config.VIGIA_PRAZO_STORIES_H
+                fila.append(((0, -desde, intervalo) if em_risco else (1, intervalo, -desde), desde / intervalo,
+                             username))
+            continue
         atraso = desde / prazo(intervalo, vazias)
         if atraso >= 1:
             stories_em_risco = desde >= config.VIGIA_PRAZO_STORIES_H
@@ -121,14 +150,15 @@ def atrasadas(con, agora: datetime, horas: dict[str, float]) -> list[tuple[float
     return [(atraso, username) for ordem, atraso, username in sorted(fila, key=lambda x: (x[0], x[2]))]
 
 
-def reservar(con, conta: str, agora: datetime, horas: dict[str, float]) -> str | None:
+def reservar(con, conta: str, agora: datetime, horas: dict[str, float], volta: bool = False,
+             inicio: datetime | None = None) -> str | None:
     """A página mais atrasada, já reservada para a conta. A transação imediata impede dois trabalhadores de pegar a
     mesma."""
     if con.in_transaction:
         con.commit()
     con.execute("BEGIN IMMEDIATE")
     try:
-        fila = atrasadas(con, agora, horas)
+        fila = atrasadas(con, agora, horas, volta, inicio)
         username = fila[0][1] if fila else None
         if username:
             con.execute("INSERT OR REPLACE INTO reservas (rede, username, conta, reservada_em) "
@@ -181,7 +211,8 @@ def alertar(con, posts: list[dict], aviso=print) -> int:
                             "AND post_id = ?", (post["rede"], post["post_id"])).fetchone()
         if not linha or not linha["sobre_energia"] or linha["sentimento"] != "negativo":
             continue
-        origem = f"site {post['username']}" if post["rede"] == "web" else f"@{post['username']}"
+        redes = {"web": "site ", "threads": "Threads @", "x": "X @", "radio": "rádio ao vivo "}
+        origem = f"{redes.get(post['rede'], '@')}{post['username']}"
         alerta = (f"{db.agora()}  {origem}  setor: {linha['setor']}  {linha['tema']}  {linha['resumo']}  "
                   f"{post.get('url') or ''}")
         ARQUIVO_ALERTAS.parent.mkdir(parents=True, exist_ok=True)
@@ -227,16 +258,19 @@ def classificar_e_alertar(con, cliente, username: str, aviso=print) -> int:
 
 
 def vigiar(con, coletor, conta: str, ate: datetime, aviso=print, ia=None, relogio=None, dormir=time.sleep,
-           parar=lambda: False) -> Counter:
+           parar=lambda: False, volta: bool = False) -> Counter:
     """O laço de um trabalhador: reserva a página mais atrasada, coleta, libera, até a hora `ate` ou até pedirem
     para parar. No teto diário de leituras da conta, espera em vez de parar. Entre uma página e outra, faz a busca
-    de posts por palavra-chave que estiver vencida (busca_posts.py)."""
+    de posts por palavra-chave que estiver vencida (busca_posts.py). Na volta (`volta=True`), termina quando não
+    sobra página sem visita recente (ver `atrasadas`)."""
     from . import busca_posts, comentarios, investigacao, mencoes, monitoramento
     from .navegador import ColetaInterrompida, TetoAtingido
 
     relogio = relogio or (lambda: datetime.now(timezone.utc))
     resumo = Counter()
     horas, calculado = intervalos(con), relogio()
+    inicio = calculado  # a volta conta a visita recente daqui, não da hora de cada reserva
+    consolidado_em = sites_em = estimado_em = None
 
     def esperar(segundos):
         cochilar(min(segundos, max((ate - relogio()).total_seconds(), 1)), parar, dormir)
@@ -247,6 +281,15 @@ def vigiar(con, coletor, conta: str, ate: datetime, aviso=print, ia=None, relogi
                 break
             if agora - calculado > RECALCULAR:
                 horas, calculado = intervalos(con), agora
+            if ia is not None and (consolidado_em is None or agora - consolidado_em > CONSOLIDAR):
+                consolidado_em = agora  # a mesma notícia (fatos.py): sem leitura, então vem antes do teto
+                resumo["fatos"] += consolidar(con, ia, conta, agora, aviso)
+            if estimado_em is None or agora - estimado_em > CONSOLIDAR:
+                estimado_em = agora  # as interações estimadas dos stories (estimativa.py): só o banco
+                resumo["stories_estimados"] += estimar_stories(con, aviso)
+            if sites_em is None or agora - sites_em > OLHAR_SITES:
+                sites_em = agora  # os sites de notícia (sites.py): sem leitura do Instagram, então antes do teto
+                resumo["materias"] += ler_sites(con, ia, agora, aviso)
             teto = coletor.espera_do_teto() if hasattr(coletor, "espera_do_teto") else 0
             if teto:
                 if teto > 600:
@@ -304,8 +347,11 @@ def vigiar(con, coletor, conta: str, ate: datetime, aviso=print, ia=None, relogi
                 finally:
                     investigacao.liberar(con, autores)
                 continue
-            username = reservar(con, conta, agora, horas)
+            username = reservar(con, conta, agora, horas, volta, inicio)
             if not username:
+                if volta:  # as páginas que faltam estão com outros trabalhadores, ou não falta nenhuma
+                    aviso(f"sem página para visitar nesta volta: {dict(resumo)}")
+                    break
                 esperar(segundos_ate_a_proxima(con, agora, horas))
                 continue
             profundidade = con.execute("SELECT profundidade FROM contas WHERE rede = 'instagram' AND username = ?",
@@ -333,6 +379,48 @@ def vigiar(con, coletor, conta: str, ate: datetime, aviso=print, ia=None, relogi
     return resumo
 
 
+def consolidar(con, ia, conta: str, agora: datetime, aviso=print) -> int:
+    """Agrupa as menções novas que tratam da mesma notícia, uma consolidação por vez entre os trabalhadores. Uma falha
+    aqui não desliga a IA dos outros passos: fica para a próxima vez."""
+    from . import fatos
+
+    if not fatos.reservar_vez(con, conta, agora):
+        return 0
+    try:
+        ligadas = fatos.consolidar(con, ia, aviso=lambda _: None)["ligadas"]
+        fatos.revisar(con, ia, dias=REVISAR_DIAS, aviso=aviso)  # os agrupamentos recentes que ficaram separados
+        return ligadas
+    except Exception as erro:
+        aviso(f"mesma notícia ficou para depois ({type(erro).__name__})")
+        return 0
+    finally:
+        fatos.liberar_vez(con)
+
+
+def estimar_stories(con, aviso=print) -> int:
+    """Recalcula as interações estimadas dos stories recentes. Uma falha (o banco ocupado) fica para a próxima vez."""
+    from . import estimativa
+
+    try:
+        return estimativa.atualizar(con)
+    except sqlite3.OperationalError as erro:
+        con.rollback()
+        aviso(f"estimativa dos stories ficou para depois ({erro})")
+        return 0
+
+
+def ler_sites(con, ia, agora: datetime, aviso=print) -> int:
+    """A rodada dos sites de notícia, quando venceu (uma por hora entre todos os trabalhadores). Uma falha aqui não
+    desliga a IA dos outros passos: fica para a próxima rodada."""
+    from . import sites
+
+    try:
+        return sites.rodada(con, ia, agora, aviso)["novas"]
+    except Exception as erro:
+        aviso(f"sites de notícia ficaram para depois ({type(erro).__name__})")
+        return 0
+
+
 def ia_disponivel() -> bool:
     """A DeepSeek responde daqui? (Sem isso, uma chamada pode travar o trabalhador por minutos.)"""
     from . import classificacao_deepseek as ds
@@ -355,8 +443,10 @@ def parada_pedida() -> bool:
     return ARQUIVO_PARAR.exists()
 
 
-def trabalhador(conta: str, ate: str, caminho_banco: str, visivel: bool, com_ia: bool, atraso: float = 0) -> dict:
-    """Roda num processo próprio: espera a sua vez, abre o Edge da conta e vigia até `ate` (ISO, UTC)."""
+def trabalhador(conta: str, ate: str, caminho_banco: str, visivel: bool, com_ia: bool, atraso: float = 0,
+                volta: bool = False) -> dict:
+    """Roda num processo próprio: espera a sua vez, abre o Edge da conta e vigia até `ate` (ISO, UTC) ou, na volta,
+    até não sobrar página."""
     from . import navegador
 
     def aviso(mensagem):
@@ -379,8 +469,10 @@ def trabalhador(conta: str, ate: str, caminho_banco: str, visivel: bool, com_ia:
 
             ia = ds.criar_cliente()
         aviso("vigiando")
-        with navegador.abrir(visivel, conta=conta, dormir=dormir_ritmo, uniforme=True) as coletor:
-            return {"conta": conta, **vigiar(con, coletor, conta, fim, aviso, ia, parar=parar)}
+        # A volta lê num ritmo fixo; a vigilância contínua espalha o teto do dia (ver `Ritmo.intervalo_uniforme`).
+        with navegador.abrir(visivel, conta=conta, dormir=dormir_ritmo, uniforme=True,
+                             por_hora=config.VIGIA_VOLTA_POR_HORA if volta else None) as coletor:
+            return {"conta": conta, **vigiar(con, coletor, conta, fim, aviso, ia, parar=parar, volta=volta)}
     except Parada:
         motivo = navegador.desativada(conta)
         return {"conta": conta, "parou": f"desativada: {motivo}", "sem_login": True} if motivo else {
@@ -405,18 +497,23 @@ def contas_novas(conhecidas: set[str]) -> list[str]:
     from . import navegador
 
     return [c for c in navegador.contas_configuradas()
-            if c not in conhecidas and not navegador.desativada(c)
+            if c not in conhecidas and not navegador.desativada(c) and "instagram" in navegador.redes_da_conta(c)
             and navegador.tem_sessao(navegador.pasta_conta(c)) is True]
 
 
 def executar(contas: list[str], horas: float, com_ia: bool = True, aviso=print, visivel: bool = config.NAV_VISIVEL,
              procurar_novas=None, trabalhar=trabalhador, executor_cls=ProcessPoolExecutor,
-             esperar_contas=time.sleep) -> list[dict]:
+             esperar_contas=time.sleep, volta: bool = False) -> list[dict]:
     """Um trabalhador por conta, entrando com ESCALONAR segundos de diferença. `procurar_novas(conhecidas)` devolve
     contas logadas depois do início, que entram também. Duas contas barradas em menos de uma hora param todas.
 
     Cada conta roda no seu próprio processo (um executor por conta): se um processo morre, os das outras contas
-    seguem, e a nova tentativa abre um processo novo."""
+    seguem, e a nova tentativa abre um processo novo.
+
+    Na volta (`volta=True`), cada trabalhador para quando não sobra página, e `horas` é só o limite. A volta usa as
+    contas logadas no início; uma conta logada depois entra na volta seguinte."""
+    if volta:
+        trabalhar, procurar_novas = partial(trabalhar, volta=True), None
     ARQUIVO_PARAR.unlink(missing_ok=True)
     fim = datetime.now(timezone.utc) + timedelta(hours=horas)
     resultados, bloqueios, conhecidas, tentativas = [], [], set(), Counter()

@@ -16,7 +16,7 @@ from .descoberta import lotes
 # A IA ligou a conta ao TO: abrangência estadual ou algum município do TO.
 SQL_DO_TO_PELA_IA = ("(k.abrangencia = 'estadual' OR EXISTS (SELECT 1 FROM conta_municipio cm WHERE cm.rede = c.rede "
                      "AND cm.username = c.username AND cm.fonte = 'ia'))")
-LISTAS_MONITORADAS = ("mais_seguidas_to", "influenciadores_to")
+LISTAS_MONITORADAS = ("mais_seguidas_to", "influenciadores_to", "radios_to")  # radios_to: radios.py
 
 # Monitoradas: prioridade A/B, aprovadas na revisão, as das listas (mais seguidas e influenciadores do TO) e todas
 # as páginas de fofoca do TO, mesmo as de score baixo.
@@ -94,13 +94,15 @@ def coletar_novos(con, coletor, contas: list[dict], aviso=print, agora: datetime
                   com_stories: bool = True, triar=None) -> dict:
     """Visita todas as contas: posts novos (sem o limite de 12), engajamento dos últimos dias e, se a conta tem
     story novo, os stories (que somem em 24 horas)."""
-    # Importado aqui: stories usa mencoes, que importa este módulo.
-    from . import stories
+    # Importados aqui: stories e transcricao usam mencoes, que importa este módulo.
+    from . import stories, transcricao
 
     agora = agora or datetime.now(timezone.utc)
     municipios = mun.carregar(con)
     janela = agora - JANELA_ATUALIZACAO
     resumo = {"contas": 0, "posts": 0, "perfis": 0, "stories": 0, "stories_sobre_energia": 0}
+    # Os vídeos das rádios aprovadas (radios.py) vão para a fila da transcrição, com o endereço que a grade já traz.
+    radios = {l[0] for l in con.execute("SELECT username FROM listas WHERE rede = 'instagram' AND lista = 'radios_to'")}
     com_stories = com_stories and hasattr(coletor, "stories")
     fila = ordem_de_visita(con, contas)
     for i, lote in enumerate(lotes(fila, tamanho_lote(coletor, config.PERFIS_POR_RUN)), 1):
@@ -119,6 +121,8 @@ def coletar_novos(con, coletor, contas: list[dict], aviso=print, agora: datetime
         por_conta = agrupar_por_dono(itens)
         for u in usernames:
             resumo["posts"] += perfis.ingerir_posts(con, u, por_conta.get(u, []))
+            if u in radios and (n := transcricao.enfileirar(con, u, por_conta.get(u, []), agora)):
+                resumo["videos_na_fila"] = resumo.get("videos_na_fila", 0) + n
         # Grava já: a leitura seguinte espera a pausa do ritmo, e outro trabalhador não pode ficar travado no banco.
         con.commit()
 

@@ -67,12 +67,30 @@ VIGIA_HORAS = {"foco": float(os.getenv("RADAR_VIGIA_FOCO_H", "1")),  # influenci
 VIGIA_SEGUIDORES_ALTA = int(os.getenv("RADAR_VIGIA_SEGUIDORES_ALTA", "30000"))
 # Os stories somem em 24 h: toda página monitorada é visitada pelo menos a cada tantas horas, antes das revisitas.
 VIGIA_PRAZO_STORIES_H = float(os.getenv("RADAR_VIGIA_STORIES_H", "20"))
+# Uma volta (`vigiar --volta`, duas por dia pelo agendar.ps1) passa por toda página sem visita nas tantas horas antes
+# do começo dela e termina. Assim, uma volta que recomeça (o PC reiniciou no meio) continua de onde parou.
+VIGIA_VOLTA_H = float(os.getenv("RADAR_VIGIA_VOLTA_H", "4"))
+# Ritmo da volta: tantas leituras por hora por conta, fixo, sempre dentro dos tetos NAV_MAX_HORA e NAV_MAX_DIA. O ritmo
+# da vigilância contínua espalha o teto do dia e desconta o que a conta já leu: com duas voltas por dia cairia para
+# ~38 por hora, e a volta levaria mais de 4 h.
+VIGIA_VOLTA_POR_HORA = float(os.getenv("RADAR_VIGIA_VOLTA_POR_HORA", "60"))
 # Cada termo da busca de posts por palavra-chave (busca_posts.py) roda a cada tantas horas; 0 desliga.
 VIGIA_BUSCA_POSTS_H = float(os.getenv("RADAR_VIGIA_BUSCA_POSTS_H", "6"))
+# O mesmo no Threads e no X (redes.py), com as contas próprias de cada rede.
+VIGIA_BUSCA_THREADS_H = float(os.getenv("RADAR_VIGIA_BUSCA_THREADS_H", "6"))
+VIGIA_BUSCA_X_H = float(os.getenv("RADAR_VIGIA_BUSCA_X_H", "3"))
 # Comentários lidos por post pelo navegador (cada 10 a mais é uma leitura). As respostas ficam de fora.
 COMENTARIOS_POR_POST = int(os.getenv("RADAR_COMENTARIOS_POR_POST", "150"))
 # Perfis lidos por dia na investigação de quem posta (etapa 2, só quando a DeepSeek fica em dúvida).
 INVESTIGAR_PERFIS_DIA = int(os.getenv("RADAR_INVESTIGAR_PERFIS_DIA", "30"))
+
+# Transcrição dos vídeos das rádios (transcricao.py). O modelo, o áudio passageiro e as transcrições completas ficam
+# fora do repositório, de preferência noutro disco (RADAR_MIDIA_DIR no .env).
+MIDIA_DIR = Path(os.getenv("RADAR_MIDIA_DIR") or DATA_DIR / "midia")
+TRANSCRICAO_MODELO = os.getenv("RADAR_TRANSCRICAO_MODELO", "small")
+TRANSCRICAO_THREADS = int(os.getenv("RADAR_TRANSCRICAO_THREADS", "4"))
+# Teto de áudio por dia: os vídeos das rádios e os jornais da manhã ao vivo (6 rádios x 3 h = 1.080 min).
+TRANSCRICAO_MINUTOS_DIA = float(os.getenv("RADAR_TRANSCRICAO_MINUTOS_DIA", "1500"))
 
 # Quantos termos ou usernames vão em cada execução de ator.
 TERMOS_POR_RUN = 50

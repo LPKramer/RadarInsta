@@ -11,6 +11,9 @@ Cada autor que a busca não sabe situar fica na fila e a DeepSeek o investiga, e
 A conta é do TO com uf "TO", confiança de CONFIANCA_TO ou mais e, quando a DeepSeek diz a cidade, um município do TO
 pelo IBGE (`conferir`). O veredito vale por VALIDADE, e a localização fica guardada mesmo quando é de fora (tabela
 `investigacoes`). Depois, os posts pendentes do autor seguem para a análise das menções ou são descartados.
+
+Vale para as três redes (`rede`). No X, a bio e o local escrito no perfil vêm junto do post e já entram na etapa 1.
+No Threads, o @ é o mesmo do Instagram: o veredito de lá vale aqui (`herdar`), sem leitura nem IA.
 """
 from __future__ import annotations
 
@@ -30,14 +33,15 @@ CONFIANCA_DECIDE = 0.75
 # TO, e era de Manaus. Abaixo disso, a conta fica de fora mesmo depois de ler o perfil.
 CONFIANCA_TO = 0.75
 SO_O_ESTADO = {"tocantins", "to", "estado do tocantins"}
-REDE_RESERVA = "investigar_instagram"  # na tabela `reservas`, o username do autor
+REDE_RESERVA = "investigar_instagram"  # na tabela `reservas`, o username do autor (investigar_<rede>)
+NOMES_REDE = {"instagram": "Instagram", "threads": "Threads", "x": "X"}
 RESERVA_MAX = timedelta(minutes=30)
 MAX_TEXTOS = 10
 MAX_LETRAS = 300
 
-INSTRUCOES = """Você descobre onde mora ou atua uma conta do Instagram que postou sobre energia elétrica, para o \
-radar de reputação da Energisa Tocantins. Recebe o @, o nome, os posts dela e, quando houver, a bio, o link, os \
-posts recentes e os locais marcados.
+INSTRUCOES = """Você descobre onde mora ou atua uma conta de rede social (Instagram, Threads ou X) que postou sobre \
+energia elétrica, para o radar de reputação da Energisa Tocantins. Recebe o @, o nome, os posts dela e, quando \
+houver, a bio, o local escrito no perfil, o link, os posts recentes e os locais marcados.
 
 Diga a cidade e o estado (UF) mais prováveis. A cidade é sempre o município: distritos e bairros contam pela cidade \
 (Luzimangues é distrito de Porto Nacional, TO; Taquaralto e Aureny são bairros de Palmas, TO). Use as pistas: nome \
@@ -86,13 +90,21 @@ def pistas(textos: list[str], municipios) -> str:
 def descrever(autor: dict, municipios, perfil: dict | None = None) -> str:
     """A conta como a DeepSeek a vê: o que veio na busca e, na etapa 2, o perfil lido."""
     posts = autor["posts"][:MAX_TEXTOS]
-    linhas = [f"Conta: @{autor['username']}" + (f" ({autor['nome']})" if autor.get("nome") else ""),
-              "Posts sobre energia achados na busca:"]
+    rede = autor.get("rede") or REDE
+    linhas = [f"Conta: @{autor['username']}" + (f" ({autor['nome']})" if autor.get("nome") else "")
+              + ("" if rede == REDE else f" no {NOMES_REDE[rede]}")]
+    textos = [p["legenda"] or "" for p in posts] + [p.get("local") or "" for p in posts]
+    if not perfil and (autor.get("bio") or autor.get("local_perfil")):  # o X traz os dois junto do post
+        linhas += [f"Bio: {_texto(autor.get('bio'))}", f"Local escrito no perfil: {_texto(autor.get('local_perfil'))}"]
+        textos += [autor.get("bio") or "", autor.get("local_perfil") or ""]
+    linhas.append("Posts sobre energia achados na busca:")
     linhas += [f"- {_texto(p['legenda'])}" + (f" [local marcado: {p['local']}]" if p.get("local") else "")
                for p in posts]
-    textos = [p["legenda"] or "" for p in posts] + [p.get("local") or "" for p in posts]
     if perfil:
         linhas.append(f"Bio: {_texto(perfil.get('biography'))}")
+        if perfil.get("location"):
+            linhas.append(f"Local escrito no perfil: {_texto(perfil['location'])}")
+            textos.append(perfil["location"])
         if perfil.get("externalUrl"):
             linhas.append(f"Link: {perfil['externalUrl']}")
         recentes = (perfil.get("latestPosts") or [])[:MAX_TEXTOS]
@@ -112,21 +124,23 @@ def perguntar(cliente, texto: str, modelo: str = config.MODELO) -> tuple[dict, s
 
 # --- Fila de autores ------------------------------------------------------------------------
 
-def pendentes(con, agora: datetime | None = None, limite: int | None = None) -> list[dict]:
+def pendentes(con, agora: datetime | None = None, limite: int | None = None, rede: str = REDE) -> list[dict]:
     """Autores com posts da busca à espera da investigação, sem veredito válido, os de mais posts primeiro."""
     agora = agora or datetime.now(timezone.utc)
     validos = {l[0] for l in con.execute("SELECT username FROM investigacoes WHERE rede = ? AND investigada_em >= ?",
-                                         (REDE, (agora - VALIDADE).isoformat(timespec="seconds")))}
+                                         (rede, (agora - VALIDADE).isoformat(timespec="seconds")))}
     autores: dict[str, dict] = {}
     for linha in con.execute(
-            """SELECT p.username, c.nome, p.legenda, p.local FROM posts_busca b
+            """SELECT p.username, c.nome, c.bio, c.local_perfil, p.legenda, p.local FROM posts_busca b
                JOIN posts p ON p.rede = b.rede AND p.post_id = b.post_id
                LEFT JOIN contas c ON c.rede = p.rede AND c.username = p.username
-               WHERE b.rede = ? AND b.estado = 'a_investigar' ORDER BY p.publicado_em DESC""", (REDE,)):
+               WHERE b.rede = ? AND b.estado = 'a_investigar' ORDER BY p.publicado_em DESC""", (rede,)):
         if linha["username"] in validos:
             continue
-        autor = autores.setdefault(linha["username"], {"username": linha["username"], "nome": linha["nome"],
-                                                       "posts": []})
+        autor = autores.setdefault(linha["username"], {
+            "username": linha["username"], "nome": linha["nome"], "rede": rede, "posts": [],
+            # No Instagram, a bio só entra na etapa 2, com o perfil lido.
+            **({} if rede == REDE else {"bio": linha["bio"], "local_perfil": linha["local_perfil"]})})
         autor["posts"].append({"legenda": linha["legenda"], "local": linha["local"]})
     fila = sorted(autores.values(), key=lambda a: -len(a["posts"]))
     return fila[:limite] if limite else fila
@@ -160,41 +174,82 @@ def conferir(veredito: dict, municipios) -> tuple[dict, bool, int | None]:
     return veredito, do_to, ibge if do_to else None
 
 
-def gravar(con, username: str, veredito: dict, etapa: int, modelo: str, municipios) -> bool:
+def gravar(con, username: str, veredito: dict, etapa: int, modelo: str, municipios, rede: str = REDE) -> bool:
     """Guarda a localização provável, conferida, e libera os posts pendentes do autor. Devolve se a conta é do TO."""
     veredito, do_to, ibge = conferir(veredito, municipios)
     con.execute(
         "INSERT OR REPLACE INTO investigacoes (rede, username, cidade, uf, ibge_id, do_to, confianca, evidencias, "
         "etapa, modelo, investigada_em) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (REDE, username, veredito["cidade"], veredito["uf"], ibge, int(do_to), veredito["confianca"],
+        (rede, username, veredito["cidade"], veredito["uf"], ibge, int(do_to), veredito["confianca"],
          veredito["evidencias"], etapa, modelo, db.agora()))
     if ibge:
-        db.vincular_municipio(con, username, ibge, "investigacao")
+        db.vincular_municipio(con, username, ibge, "investigacao", rede)
     con.execute("UPDATE posts_busca SET estado = ? WHERE rede = ? AND estado = 'a_investigar' AND post_id IN "
                 "(SELECT post_id FROM posts WHERE rede = ? AND username = ?)",
-                ("do_to" if do_to else "descartado", REDE, REDE, username))
+                ("do_to" if do_to else "descartado", rede, rede, username))
     con.commit()
     return do_to
 
 
-def perfis_lidos_hoje(con, agora: datetime | None = None) -> int:
+def herdar(con, autores: list[dict], municipios, rede: str, agora: datetime | None = None) -> tuple[list[dict], int]:
+    """O Threads usa o @ do Instagram: o veredito válido de lá, ou o município que a classificação da base deu à
+    conta, vale aqui, sem leitura nem IA (etapa 0). Devolve os autores que sobram e quantos herdaram."""
+    if rede != "threads":
+        return autores, 0
+    agora = agora or datetime.now(timezone.utc)
+    sobram, herdados = [], 0
+    for autor in autores:
+        ig = con.execute("SELECT cidade, uf, confianca, evidencias FROM investigacoes WHERE rede = 'instagram' "
+                         "AND username = ? AND investigada_em >= ?",
+                         (autor["username"], (agora - VALIDADE).isoformat(timespec="seconds"))).fetchone()
+        base = None if ig else con.execute(
+            "SELECT m.nome FROM conta_municipio cm JOIN municipios m ON m.ibge_id = cm.ibge_id WHERE cm.rede = "
+            "'instagram' AND cm.username = ? AND cm.fonte IN ('ia', 'investigacao') LIMIT 1",
+            (autor["username"],)).fetchone()
+        if ig:
+            veredito = {"cidade": ig["cidade"], "uf": ig["uf"], "confianca": ig["confianca"],
+                        "evidencias": f"mesma conta do Instagram: {ig['evidencias']}"[:300]}
+        elif base:
+            veredito = {"cidade": base["nome"], "uf": "TO", "confianca": 0.9,
+                        "evidencias": f"mesma conta do Instagram, ligada a {base['nome']} na base"}
+        else:
+            sobram.append(autor)
+            continue
+        gravar(con, autor["username"], veredito, 0, "herdado do instagram", municipios, rede)
+        herdados += 1
+    return sobram, herdados
+
+
+def perfis_lidos_hoje(con, agora: datetime | None = None, rede: str = REDE) -> int:
     agora = agora or datetime.now(timezone.utc)
     return con.execute("SELECT COUNT(*) FROM investigacoes WHERE rede = ? AND etapa = 2 AND investigada_em >= ?",
-                       (REDE, agora.strftime("%Y-%m-%d"))).fetchone()[0]
+                       (rede, agora.strftime("%Y-%m-%d"))).fetchone()[0]
 
 
-def investigar(con, cliente, coletor, autores: list[dict], paralelo: int = 8, aviso=print) -> Counter:
+def ler_perfil(coletor, username: str, rede: str = REDE) -> dict | None:
+    """O perfil no formato da Apify: uma leitura."""
+    if rede == REDE:
+        _, itens = coletor.rodar(config.ATOR_PERFIL, {"usernames": [username]}, "perfil")
+    else:
+        itens = [coletor.perfil_rede(rede, username)]
+    return next((i for i in itens if i and (i.get("username") or "").lower() == username and not i.get("error")),
+                None)
+
+
+def investigar(con, cliente, coletor, autores: list[dict], paralelo: int = 8, aviso=print,
+               rede: str = REDE) -> Counter:
     """As duas etapas para os autores dados. A etapa 1 vai em paralelo; a etapa 2 lê um perfil por autor em dúvida,
-    até o teto do dia (os que passam do teto ficam para amanhã)."""
+    até o teto do dia (os que passam do teto ficam para amanhã). No Threads, antes, a herança do Instagram."""
     municipios = mun.carregar(con)
     resumo = Counter()
+    autores, resumo["herdados"] = herdar(con, autores, municipios, rede)
     duvida = []
     por_nome = {a["username"]: a for a in autores}
 
     def guardar(username, resultado):
         veredito, modelo = resultado
         if veredito["confianca"] >= CONFIANCA_DECIDE:
-            resumo["do_to" if gravar(con, username, veredito, 1, modelo, municipios) else "de_fora"] += 1
+            resumo["do_to" if gravar(con, username, veredito, 1, modelo, municipios, rede) else "de_fora"] += 1
             resumo["etapa1"] += 1
         else:
             duvida.append((username, veredito, modelo))
@@ -206,28 +261,30 @@ def investigar(con, cliente, coletor, autores: list[dict], paralelo: int = 8, av
         if coletor is None:  # comando só com a IA: o autor fica na fila para quem puder ler o perfil (a vigilância)
             resumo["em_duvida"] += 1
             continue
-        if perfis_lidos_hoje(con) >= config.INVESTIGAR_PERFIS_DIA:
+        if perfis_lidos_hoje(con, rede=rede) >= config.INVESTIGAR_PERFIS_DIA:
             # Teto do dia: fica o da etapa 1, para o autor não voltar à fila e ser perguntado de novo a cada volta da
             # vigilância. Na dúvida (abaixo de CONFIANCA_DECIDE), ele não chega a CONFIANCA_TO: fica de fora.
-            do_to = gravar(con, username, veredito1, 1, modelo1, municipios)
+            do_to = gravar(con, username, veredito1, 1, modelo1, municipios, rede)
             resumo["do_to" if do_to else "de_fora"] += 1
             resumo["etapa1_no_teto"] += 1
             continue
-        _, itens = coletor.rodar(config.ATOR_PERFIL, {"usernames": [username]}, "perfil")
-        perfil = next((i for i in itens if (i.get("username") or "").lower() == username and not i.get("error")),
-                      None)
+        perfil = ler_perfil(coletor, username, rede)
         if perfil:
-            perfis.ingerir(con, perfil, "busca_posts", municipios, 1)
+            perfis.ingerir(con, perfil, "busca_posts", municipios, 1, rede)
         veredito, modelo = perguntar(cliente, descrever(por_nome[username], municipios, perfil))
-        resumo["do_to" if gravar(con, username, veredito, 2, modelo, municipios) else "de_fora"] += 1
+        resumo["do_to" if gravar(con, username, veredito, 2, modelo, municipios, rede) else "de_fora"] += 1
         resumo["etapa2"] += 1
-    resumo["investigados"] = resumo["etapa1"] + resumo["etapa1_no_teto"] + resumo["etapa2"]
-    return resumo
+    resumo["investigados"] = resumo["etapa1"] + resumo["etapa1_no_teto"] + resumo["etapa2"] + resumo["herdados"]
+    return +resumo
 
 
 # --- Reserva na vigilância ------------------------------------------------------------------
 
-def reservar(con, conta: str, agora: datetime, quantos: int = 3) -> list[dict]:
+def _reserva(rede: str) -> str:
+    return f"investigar_{rede}"
+
+
+def reservar(con, conta: str, agora: datetime, quantos: int = 3, rede: str = REDE) -> list[dict]:
     """Até `quantos` autores pendentes, já reservados para a conta."""
     if con.in_transaction:
         con.commit()
@@ -235,11 +292,11 @@ def reservar(con, conta: str, agora: datetime, quantos: int = 3) -> list[dict]:
     try:
         reservados = {l[0] for l in con.execute(
             "SELECT username FROM reservas WHERE rede = ? AND reservada_em > ?",
-            (REDE_RESERVA, (agora - RESERVA_MAX).isoformat(timespec="seconds")))}
-        autores = [a for a in pendentes(con, agora) if a["username"] not in reservados][:quantos]
+            (_reserva(rede), (agora - RESERVA_MAX).isoformat(timespec="seconds")))}
+        autores = [a for a in pendentes(con, agora, rede=rede) if a["username"] not in reservados][:quantos]
         for a in autores:
             con.execute("INSERT OR REPLACE INTO reservas (rede, username, conta, reservada_em) VALUES (?, ?, ?, ?)",
-                        (REDE_RESERVA, a["username"], conta, agora.isoformat(timespec="seconds")))
+                        (_reserva(rede), a["username"], conta, agora.isoformat(timespec="seconds")))
         con.commit()
     except BaseException:
         con.rollback()
@@ -247,16 +304,16 @@ def reservar(con, conta: str, agora: datetime, quantos: int = 3) -> list[dict]:
     return autores
 
 
-def liberar(con, autores: list[dict]) -> None:
+def liberar(con, autores: list[dict], rede: str = REDE) -> None:
     if con.in_transaction:
         con.commit()
     con.executemany("DELETE FROM reservas WHERE rede = ? AND username = ?",
-                    [(REDE_RESERVA, a["username"]) for a in autores])
+                    [(_reserva(rede), a["username"]) for a in autores])
     con.commit()
 
 
-def situacao(con) -> dict:
+def situacao(con, rede: str = REDE) -> dict:
     linha = con.execute("SELECT COUNT(*), SUM(do_to), SUM(etapa = 2) FROM investigacoes WHERE rede = ?",
-                        (REDE,)).fetchone()
+                        (rede,)).fetchone()
     return {"investigadas": linha[0], "do_to": linha[1] or 0, "com_perfil_lido": linha[2] or 0,
-            "autores_na_fila": len(pendentes(con))}
+            "autores_na_fila": len(pendentes(con, rede=rede))}

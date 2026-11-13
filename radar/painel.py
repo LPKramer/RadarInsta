@@ -10,6 +10,7 @@ import json
 import math
 import re
 import socket
+import sqlite3
 import sys
 import threading
 import unicodedata
@@ -32,6 +33,8 @@ POR_PAGINA = 48
 # Os períodos da aba Recentes, em dias (a página não troca o sentimento nem pede outro período).
 PERIODOS_RECENTES = (1, 3, 7)
 CIDADES = 5  # fileiras de cidade na tela inicial: as mais populosas
+CANDIDATOS_TOP10 = 500  # posts de mais interação juntados por notícia antes de escolher o Top 10
+CANDIDATOS_FILEIRA = 3000  # menções lidas para juntar por notícia as outras fileiras (a base tem algumas centenas)
 LOCAL_MAX = localizacao.LOCAL_MAX  # conta ligada a até tantos municípios conta como local na fileira da cidade
 AO_VIVO = timedelta(minutes=15)  # visita mais recente que isso: a vigilância está rodando
 TIPOS_STATIC = {".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
@@ -45,10 +48,10 @@ TIPOS_MIDIA = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
 # O resto do que a vigilância coleta (sorteio, política, fofoca) fica no banco, fora da tela.
 SQL_POST = """
 SELECT p.rede, p.post_id, p.username, p.tipo, p.publicado_em, p.legenda, p.curtidas, p.comentarios,
-       p.visualizacoes, p.url, p.capa, p.arquivo, p.local, p.medido_em,
+       p.visualizacoes, p.url, p.capa, p.arquivo, p.local, p.medido_em, p.interacoes_estimadas,
        c.nome, c.seguidores, c.engajamento_medio, k.tipo AS tipo_conta,
        x.post_id IS NOT NULL AS mencao, x.sentimento, x.tema, x.setor, x.alcance, x.resumo, x.cita_energisa,
-       COALESCE(p.curtidas, 0) + COALESCE(p.comentarios, 0) AS interacoes
+       COALESCE(p.curtidas, 0) + COALESCE(p.comentarios, 0) + COALESCE(p.interacoes_estimadas, 0) AS interacoes
 FROM posts p
 JOIN mencoes x ON x.rede = p.rede AND x.post_id = p.post_id AND x.sobre_energia = 1
 LEFT JOIN contas c ON c.rede = p.rede AND c.username = p.username
@@ -213,6 +216,10 @@ def _consulta(filtros: dict, lista_monitoradas: list[str] | None, agora: datetim
     if filtros.get("conta"):
         sql.append("AND p.username = ?")
         args.append(filtros["conta"])
+    if filtros.get("fato"):  # os posts da mesma notícia (fatos.py)
+        sql.append("AND EXISTS (SELECT 1 FROM fato_mencao f WHERE f.rede = p.rede AND f.post_id = p.post_id "
+                   "AND f.fato_id = ?)")
+        args.append(int(filtros["fato"]))
     if filtros.get("monitoradas") and lista_monitoradas is not None:
         sql.append("AND p.username IN (SELECT value FROM json_each(?))")
         args.append(json.dumps(lista_monitoradas))
@@ -233,6 +240,7 @@ def _item(linha, tem: set[str]) -> dict:
         "titulo": "" if story else titulo(linha["legenda"]),  # o texto do story é OCR: ruim de exibir
         "curtidas": linha["curtidas"], "comentarios": linha["comentarios"], "views": linha["visualizacoes"],
         "interacoes": linha["interacoes"], "seguidores": linha["seguidores"],
+        "estimado": linha["interacoes_estimadas"] is not None,  # story: a mediana dos posts da conta (estimativa.py)
         "capa": (linha["post_id"] in tem or capas.valida(linha["capa"])
                  or (story and capas.imagem_do_story(linha["arquivo"]) is not None)),
         "mencao": mencao, "link": linha["url"],
@@ -263,12 +271,90 @@ def _municipios_das_mencoes(con, ids: list[str]) -> dict[str, list[str]]:
     return nomes
 
 
+def _fatos_dos_itens(con, itens: list[dict]) -> dict[tuple[str, str], int]:
+    """O agrupamento da mesma notícia (fatos.py) de cada post. O banco aberto só para leitura pode ser de antes da
+    tabela: aí cada post vale por si."""
+    ids = [p["id"] for p in itens]
+    if not ids:
+        return {}
+    try:
+        linhas = con.execute("SELECT rede, post_id, fato_id FROM fato_mencao "
+                             "WHERE post_id IN (SELECT value FROM json_each(?))", (json.dumps(ids),)).fetchall()
+    except sqlite3.OperationalError:
+        return {}
+    return {(l[0], l[1]): l[2] for l in linhas}
+
+
+def _noticia(con, fato_id: int, cache: dict) -> dict | None:
+    """O que o cartão mostra da mesma notícia: posts, perfis, stories e interações somadas. Nada se ela tem um post
+    só."""
+    if fato_id not in cache:
+        from . import fatos
+
+        dados = fatos.resumo(con, fato_id)
+        cache[fato_id] = ({"id": fato_id, "posts": dados["posts"], "perfis": dados["perfis"],
+                           "stories": dados["stories"], "interacoes": dados["interacoes"]}
+                          if dados and dados["posts"] >= 2 else None)
+    return cache[fato_id]
+
+
+def por_noticia(con, itens: list[dict], somar: bool = True, ate: int | None = None) -> list[dict]:
+    """Um cartão por notícia: os posts da mesma notícia viram um só, o primeiro da lista (o de mais interações, na
+    ordem por interações). O cartão ganha `noticia`, com os perfis e as interações somadas de todos os posts do
+    agrupamento; com `somar`, a lista passa a ser ordenada por essa soma. Sem `somar`, para em `ate` cartões."""
+    fato_de = _fatos_dos_itens(con, itens)
+    vistos, unicos, cache = set(), [], {}
+    for p in itens:
+        if not somar and ate is not None and len(unicos) >= ate:
+            break
+        fato_id = fato_de.get((p["rede"], p["id"]))
+        if fato_id is not None and fato_id in vistos:
+            continue
+        vistos.add(fato_id)
+        if fato_id is not None and (noticia := _noticia(con, fato_id, cache)):
+            p["noticia"] = dict(noticia)
+        unicos.append(p)
+    if somar:
+        unicos.sort(key=lambda p: -(p["noticia"]["interacoes"] if p.get("noticia") else p["interacoes"]))
+    return unicos
+
+
+def anotar_noticias(con, itens: list[dict]) -> list[dict]:
+    """Todo post de uma notícia com mais de um post ganha `noticia`, sem juntar nada: a busca e o site estático
+    (api/itens.json) mostram o mesmo cartão das fileiras."""
+    fato_de, cache = _fatos_dos_itens(con, itens), {}
+    for p in itens:
+        fato_id = fato_de.get((p["rede"], p["id"]))
+        if fato_id is not None and (noticia := _noticia(con, fato_id, cache)):
+            p["noticia"] = dict(noticia)
+    return itens
+
+
+def uma_por_noticia(con, filtros: dict, limite: int, pagina: int = 0, lista_monitoradas=None, agora=None,
+                    tem=None) -> tuple[list[dict], bool]:
+    """As outras fileiras e o "ver tudo" também contam notícias: a mesma notícia aparece uma vez, no post que vem
+    primeiro na ordem da fileira (o mais novo, ou o de mais interações), com `noticia`. A ficha continua com todos."""
+    candidatos, _ = posts(con, filtros, CANDIDATOS_FILEIRA, 0, lista_monitoradas, agora, tem)
+    unicos = por_noticia(con, candidatos, somar=False, ate=(pagina + 1) * limite + 1)
+    inicio_ = pagina * limite
+    return unicos[inicio_:inicio_ + limite], len(unicos) > inicio_ + limite
+
+
+def top10(con, filtros: dict, limite: int, pagina: int = 0, agora=None, tem=None) -> tuple[list[dict], bool]:
+    """O Top 10 conta notícias, não posts: a mesma notícia em 20 perfis ocupa um lugar só, com as interações somadas."""
+    candidatos, _ = posts(con, filtros, CANDIDATOS_TOP10, agora=agora, tem=tem)
+    unicos = por_noticia(con, candidatos, somar=filtros.get("ordem", "interacoes") == "interacoes")
+    inicio_ = pagina * limite
+    return unicos[inicio_:inicio_ + limite], len(unicos) > inicio_ + limite
+
+
 def destaques(con, agora=None, tem=None, n: int = 5) -> list[dict]:
-    """Os itens do destaque no topo: as menções dos últimos 14 dias (negativas e de mais interação primeiro); sem
-    elas, as últimas menções."""
+    """Os itens do destaque no topo: as menções dos últimos 14 dias (negativas e de mais interação primeiro), uma por
+    notícia; sem elas, as últimas menções."""
     agora = agora or _agora()
     itens, _ = posts(con, {"dias": 14, "ordem": "interacoes"}, 50, agora=agora, tem=tem)
-    itens.sort(key=lambda p: (p["mencao"]["sentimento"] != "negativo", -p["interacoes"]))
+    itens = por_noticia(con, itens)
+    itens.sort(key=lambda p: p["mencao"]["sentimento"] != "negativo")  # estável: a soma das interações segue valendo
     if not itens:
         itens, _ = posts(con, {"ordem": "recentes"}, n, agora=agora, tem=tem)
     itens = itens[:n]
@@ -337,7 +423,10 @@ def linha(con, linha_id: str, pagina: int = 0, sobrepor: dict | None = None, lim
             filtros[chave] = valor
         else:
             filtros.pop(chave, None)
-    itens, mais = posts(con, filtros, limite, pagina, lista_monitoradas, agora, tem)
+    if linha_id == "top10":
+        itens, mais = top10(con, filtros, limite, pagina, agora, tem)
+    else:
+        itens, mais = uma_por_noticia(con, filtros, limite, pagina, lista_monitoradas, agora, tem)
     horas = float(filtros.get("horas") or 0) or float(filtros.get("dias") or 0) * 24
     ativos = {"dias": round(horas / 24, 2) if horas else None, "sentimento": filtros.get("sentimento"),
               "ordem": filtros.get("ordem") or "recentes"}
@@ -352,11 +441,12 @@ def inicio(con, agora=None) -> dict:
     for linha_id, (nome, formato, filtros, limite) in LINHAS.items():
         if linha_id in SO_NA_ABA:
             continue
-        itens, _ = posts(con, filtros, limite, agora=agora, tem=tem)
+        ler = top10 if linha_id == "top10" else uma_por_noticia
+        itens, _ = ler(con, filtros, limite, agora=agora, tem=tem)
         if linha_id == "top10" and len(itens) < 10:  # semana com poucas menções: o mês, e então tudo
             for dias, outro_nome in ((30, "Top 10 do mês"), (None, "Top 10")):
                 sem_periodo = {k: v for k, v in filtros.items() if k != "dias"}
-                itens, _ = posts(con, sem_periodo | ({"dias": dias} if dias else {}), limite, agora=agora, tem=tem)
+                itens, _ = top10(con, sem_periodo | ({"dias": dias} if dias else {}), limite, agora=agora, tem=tem)
                 nome = outro_nome
                 if len(itens) >= 10:
                     break
@@ -364,7 +454,7 @@ def inicio(con, agora=None) -> dict:
             linhas.append({"id": linha_id, "titulo": nome, "formato": formato, "itens": itens,
                            "verTudo": VER_TUDO.get(linha_id, linha_id != "top10")})
     for ibge_id, nome in _cidades(con):
-        itens, _ = posts(con, {"municipio": ibge_id, "ordem": "recentes"}, POR_LINHA, agora=agora, tem=tem)
+        itens, _ = uma_por_noticia(con, {"municipio": ibge_id, "ordem": "recentes"}, POR_LINHA, agora=agora, tem=tem)
         if itens:
             linhas.append({"id": f"municipio-{ibge_id}", "titulo": nome, "formato": "mencao", "itens": itens,
                            "verTudo": True, "municipio": ibge_id})
@@ -393,7 +483,31 @@ def _sentimento_dos_comentarios(con, post_id: str) -> dict | None:
             "locais": [l for l in (linha[4] or "").split(",") if l][:5]}
 
 
-def _repercussao(con, post_id: str) -> dict:
+def _mesma_noticia(con, rede: str, post_id: str) -> dict | None:
+    """O agrupamento da mesma notícia (fatos.py), se o post está num com mais de um post. O banco aberto só para
+    leitura pode ser de antes da tabela: aí não há agrupamento."""
+    from . import fatos
+
+    try:
+        return fatos.ficha(con, rede, post_id)
+    except sqlite3.OperationalError:
+        return None
+
+
+def _fala_no_video(con, rede: str, post_id: str) -> str | None:
+    """Os trechos da fala sobre energia no vídeo de uma rádio (transcricao.py), se houver. O banco aberto só para
+    leitura pode ser de antes da tabela."""
+    try:
+        linha = con.execute("SELECT trechos FROM transcricoes WHERE rede = ? AND post_id = ? AND energia = 1",
+                            (rede, post_id)).fetchone()
+    except sqlite3.OperationalError:
+        return None
+    return linha[0] if linha else None
+
+
+def _repercussao(con, post_id: str, fato: dict | None = None) -> dict:
+    if fato:  # a mesma notícia já diz quantos perfis trataram do fato
+        return {"repercutiram": fato["perfis"], "coberturaEstadual": fato["coberturaEstadual"]}
     try:
         df = relatorio.carregar(con)
     except Exception:
@@ -449,10 +563,13 @@ def post(con, post_id: str, agora=None) -> dict | None:
     item = _item(linha_post, {post_id} if arquivo and arquivo.exists() else set())
     item["onde"] = onde_do_post(con, linha_post)
     seguidores, media = linha_post["seguidores"], linha_post["engajamento_medio"]
+    if item["formato"] == "Story":  # a estimativa já é a mediana da conta: a taxa e o índice não diriam nada
+        seguidores = media = None
     item.update({
         "legenda": linha_post["legenda"], "local": linha_post["local"], "medidoEm": linha_post["medido_em"],
         "engajamentoPct": round(100 * linha_post["interacoes"] / seguidores, 2) if seguidores else None,
         "indice": round(linha_post["interacoes"] / media, 2) if media else None,
+        "falaNoVideo": _fala_no_video(con, linha_post["rede"], post_id),
     })
     if item["mencao"]:
         x = con.execute("SELECT reacao, reacao_resumo, n_comentarios_lidos FROM mencoes WHERE rede = ? "
@@ -461,7 +578,11 @@ def post(con, post_id: str, agora=None) -> dict | None:
                                "comentariosLidos": x["n_comentarios_lidos"],
                                "comentariosSentimento": _sentimento_dos_comentarios(con, post_id),
                                "municipios": _municipios_das_mencoes(con, [post_id]).get(post_id, [])})
-        item["mencao"].update(_repercussao(con, post_id))
+        item["fato"] = _mesma_noticia(con, linha_post["rede"], post_id)
+        item["mencao"].update(_repercussao(con, post_id, item["fato"]))
+        if item["fato"]:
+            juntos, _ = posts(con, {"fato": item["fato"]["id"], "ordem": "recentes"}, 31, agora=agora)
+            item["mesmaNoticia"] = [p for p in juntos if p["id"] != post_id][:30]
     item["textosComentarios"] = [{"texto": l[0], "curtidas": l[1], "sentimento": l[2]} for l in con.execute(
         "SELECT k.texto, k.curtidas, a.sentimento FROM comentarios k LEFT JOIN comentario_analise a "
         "ON a.rede = k.rede AND a.comentario_id = k.comentario_id WHERE k.rede = 'instagram' AND k.post_id = ? "
@@ -627,7 +748,7 @@ def _ponto(item: dict, fonte: str) -> dict:
     return {"id": item["id"], "rede": item["rede"], "conta": item["conta"], "nome": item["nome"],
             "formato": item["formato"], "data": item["data"],
             "titulo": m.get("resumo") or item["titulo"], "capa": item["capa"], "interacoes": item["interacoes"],
-            "views": item["views"], "sentimento": m.get("sentimento"), "tema": m.get("tema"), "fonte": fonte}
+            "estimado": item["estimado"], "views": item["views"], "sentimento": m.get("sentimento"), "tema": m.get("tema"), "fonte": fonte}
 
 
 def mapa(con, camada: str = "mencoes", dias=None, sentimento: str | None = None, agora=None) -> dict:
@@ -746,7 +867,8 @@ def setores(con, dias=None, sentimento: str | None = None, agora=None) -> dict:
         sentimentos = [l["sentimento"] for l in linhas]
         lista.append({"id": setor, "titulo": NOMES_SETOR.get(setor, "Sem setor"), "n": len(linhas),
                       "negativas": sentimentos.count("negativo"), "neutras": sentimentos.count("neutro"),
-                      "positivas": sentimentos.count("positivo"), "itens": [_item(l, tem) for l in linhas[:POR_LINHA]]})
+                      "positivas": sentimentos.count("positivo"),
+                      "itens": por_noticia(con, [_item(l, tem) for l in linhas], somar=False, ate=POR_LINHA)})
     lista.sort(key=lambda s: (s["id"] in ("nenhum", ""), -s["n"], -s["negativas"], s["titulo"]))
     return {"dias": dias, "sentimento": filtros.get("sentimento"), "total": sum(s["n"] for s in lista),
             "setores": lista}
@@ -767,7 +889,7 @@ def busca(con, termo: str, agora=None) -> dict:
     tem = capas.existentes("posts")
     linhas = con.execute(SQL_POST + " AND (norm(p.legenda) LIKE ? ESCAPE '\\' OR norm(x.resumo) LIKE ? ESCAPE '\\') "
                          "ORDER BY p.publicado_em DESC LIMIT 96", (padrao, padrao)).fetchall()
-    return {"q": termo, "contas": contas_achadas, "posts": [_item(l, tem) for l in linhas]}
+    return {"q": termo, "contas": contas_achadas, "posts": anotar_noticias(con, [_item(l, tem) for l in linhas])}
 
 
 def status(con, apos: int | None = None, agora=None) -> dict:
@@ -872,7 +994,8 @@ class Painel(BaseHTTPRequestHandler):
         consulta = {k: v[-1] for k, v in parse_qs(partes.query).items()}
         try:
             if rota.startswith("/api/"):
-                self._api(rota[5:].strip("/"), consulta)
+                # Só a barra do começo: o id da matéria de site é o endereço dela, que pode terminar em "/".
+                self._api(rota[5:].lstrip("/"), consulta)
             elif rota.startswith("/capa/"):
                 self._capa(rota[6:])
             elif rota.startswith("/foto/"):

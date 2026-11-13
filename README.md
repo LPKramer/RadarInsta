@@ -199,6 +199,9 @@ bloquear essa conta por algumas horas. O radar para no primeiro aviso, mas o ris
 | `relatorio-mencoes` | Gera `data/export/mencoes_energisa.xlsx`. | grátis |
 | `gabarito-rodar` | O teste com casos reais (enova IA): passa cada caso de `DemoDay/gabarito/Gabarito_Radar_v0.xlsx` pela análise das menções, num pedido isolado, e guarda as respostas num arquivo à parte, para o autor marcar a resposta certa sem vê-las. Não grava no banco. | DeepSeek, ~US$ 0,02 pelos 40 casos |
 | `gabarito-conferir` | Compara a resposta marcada pelo autor com a da IA: acerto por dificuldade, tema e município, e a planilha `Gabarito_Radar_resultado.xlsx`, caso a caso. | grátis |
+| `fatos` | A mesma notícia: junta as menções que tratam do mesmo fato (link em comum, semelhança do resumo e decisão da DeepSeek). A ficha do post e a aba "Mesma notícia" do relatório mostram o agrupamento. Ver "A mesma notícia", abaixo. | DeepSeek, centavos |
+| `radios-propor` / `radios-aprovar` | As rádios do TO: levanta as contas de emissora, programa e radialista (base, lista curada e busca do Instagram), a DeepSeek classifica e a planilha `data/radios_propostas.xlsx` vai para aprovação. As aprovadas entram na lista `radios_to`, que a vigilância visita no mínimo a cada 6 h. Ver "As rádios", abaixo. | navegador (uma vez) + DeepSeek, ~US$ 0,04 |
+| `transcrever` | Transcreve no PC os vídeos que as rádios aprovadas postam (faster-whisper, na CPU). A fala que toca em energia vai para a análise das menções e para os alertas. | grátis (CPU) + DeepSeek só nos vídeos com energia |
 
 Rotina diária sugerida:
 
@@ -398,6 +401,46 @@ Com influenciadores e fofoca a cada 1 h são ~4.300 visitas e ~5.600 leituras po
 8 contas. Com menos contas, a vigilância continua funcionando, só que os intervalos se esticam (ela sempre pega a
 mais atrasada em relação ao intervalo, então os de 1 h vêm primeiro).
 
+### Duas voltas por dia (`vigiar --volta` e `agendar.ps1`)
+
+Em vez de ficar ligada o dia todo, a vigia pode dar **voltas**: cada volta passa uma vez por todas as páginas
+monitoradas, com todas as contas logadas, e termina. Os stories duram 24 h, então duas voltas por dia, com 12 h
+entre elas, não perdem nenhum. Com 12 h desde a volta anterior, são ~860 leituras por volta (~170 por conta com 5
+contas): a visita de cada página, a página de stories em 30% a 55% delas e ~10% de comentários, buscas e
+investigação. Fica bem abaixo do teto. Depois de dias sem vigia são mais, porque cada página tem mais posts e
+comentários a recolher (2,4 leituras por página em 13/nov, depois de 2 dias).
+
+- Entra na volta toda página sem visita nas 4 h antes do começo dela (`RADAR_VIGIA_VOLTA_H`). O que a volta já
+  visitou não entra de novo, por mais que ela dure. Uma volta que recomeça (o PC reiniciou no meio) continua de onde
+  parou.
+- O ritmo é fixo: 60 leituras por hora por conta (`RADAR_VIGIA_VOLTA_POR_HORA`), o que dá ~3 h por volta com 5
+  contas. Quase todo o tempo da volta é a pausa entre as leituras; o navegador gasta poucos segundos em cada uma. O
+  ritmo da vigilância contínua espalha o teto do dia e desconta o que a conta já leu: com duas voltas por dia cairia
+  para ~38 por hora, e a volta passaria de 4 h. Um ritmo maior encurta a volta (pela conta, 80 dá ~2h15 e 90 dá
+  ~2 h), mas as contas 2 a 5 nunca leram a mais de ~60 por hora; o teto de 100 por hora vale em qualquer caso. Cada
+  conta a mais também encurta a volta, na proporção.
+- A ordem: primeiro as páginas com stories em risco (mais de 20 h sem visita); depois por prioridade (fofoca e
+  influenciadores, portais, o resto), da visita mais velha para a mais nova.
+- A busca de posts, os comentários das menções, a investigação de quem posta e os sites de notícia rodam dentro da
+  volta, como na vigilância contínua.
+- `--horas` vira o limite da volta. As contas logadas depois do início entram na volta seguinte.
+
+```powershell
+python -m radar vigiar --volta --dry-run    # quantas páginas e leituras a volta tem agora
+powershell -ExecutionPolicy Bypass -File .\vigiar.ps1 -Volta -Horas 6   # uma volta à mão, numa janela própria
+powershell -ExecutionPolicy Bypass -File .\agendar.ps1                  # agenda: voltas às 07:00 e às 19:00
+powershell -ExecutionPolicy Bypass -File .\agendar.ps1 -Horarios 06:30,18:30   # outros horários
+powershell -ExecutionPolicy Bypass -File .\agendar.ps1 -Estado          # última e próxima volta
+powershell -ExecutionPolicy Bypass -File .\agendar.ps1 -Desligar        # desliga a agenda e para a volta em curso
+powershell -ExecutionPolicy Bypass -File .\agendar.ps1 -Ligar           # religa
+```
+
+A tarefa "Radar - vigia" do Agendador de Tarefas roda com você logado no Windows, porque o Edge precisa da área de
+trabalho. Se o PC estiver desligado ou sem ninguém logado na hora, a volta roda assim que possível. Se a volta
+anterior ainda estiver rodando, a nova não abre; o `vigiar.ps1` também não sobe uma segunda vigia (contínua ou volta)
+quando já há uma rodando, porque as duas disputariam os perfis do Edge. Cada início fica marcado no
+`data\vigia.log` com uma linha `=== data hora`.
+
 ### As 1.000 páginas mais seguidas do TO
 
 Completam a base monitorada as 1.000 páginas e perfis do Tocantins com mais seguidores: pessoas, criadores e páginas
@@ -592,6 +635,203 @@ python -m radar reacoes --dry-run              # posts e leituras
 python -m radar reacoes --posts 100            # lê os comentários dos posts ainda não lidos e analisa
 python -m radar reacoes --posts 0              # só analisa os comentários já guardados
 python -m radar sentimento --dias 30
+```
+
+### A mesma notícia (`radar/fatos.py`)
+
+O mesmo fato sai em vários perfis, stories e sites. O choque no IFTO de Dianópolis (9/11) saiu em 24 posts de 17
+perfis. O radar junta essas menções num agrupamento (tabelas `fatos` e `fato_mencao`). Os posts continuam como são. A
+ficha do post ganha a seção "A mesma notícia em N perfis", com:
+- as interações somadas;
+- as visualizações;
+- a primeira aparição;
+- os cartões dos outros posts, cada um com o seu link.
+
+O relatório ganha a aba "Mesma notícia" e as colunas `fato_id`, `fato_posts` e `fato_interacoes`. Os alertas
+continuam por post.
+
+Como uma menção entra num agrupamento:
+1. **Link em comum.** O mesmo endereço de matéria (o "Link:" de um story ou um link na legenda) junta direto, sem IA.
+   Endereço de seção, como `/ultimas-noticias/`, não conta.
+2. **Candidatos, sem IA.** Valem os agrupamentos da janela: última aparição até 3 dias antes e primeira até 10 dias
+   antes. A nota de cada um é a semelhança do resumo (rapidfuzz), mais bônus de município (+15), de mesmo veículo (+10)
+   e de mesmo tema (+5). Ficam até 4 candidatos com nota 55 ou mais.
+3. **Sem candidato:** cria um agrupamento novo.
+4. **Com candidatos:** a DeepSeek decide, em lotes, se é o mesmo fato.
+   - Desdobramentos do mesmo caso contam: vítima identificada, nota da Energisa.
+   - Opiniões sobre um assunto geral não contam: dois advogados falando de ICMS são fatos separados.
+
+O site e o perfil do mesmo portal contam como um perfil só: `afnoticias.com.br` e @afnoticias. Isso vale quando o link
+da bio é a raiz do site ou o @ é o nome do domínio.
+
+A vigilância agrupa as menções novas a cada 10 minutos, uma consolidação por vez entre os trabalhadores e sem gastar
+leitura. Os comandos `mencoes`, `noticias`, `buscar-posts` e `triar-stories` também agrupam no fim.
+
+Na primeira passada (11/nov), as 196 menções viraram 94 agrupamentos, e 26 deles saíram em mais de um post. Os casos
+de referência:
+
+| Fato | Agrupamento |
+|---|---|
+| IFTO de Dianópolis (9/11) | 24 posts de 17 perfis |
+| Operação do Enem (6/11) | 11 posts de 8 perfis |
+| Tarifa Social (28/10) | 10 posts de 10 perfis |
+| Advogados falando de ICMS | 4 agrupamentos separados |
+
+A passada custou cerca de US$ 0,02.
+
+```powershell
+python -m radar fatos --dry-run                 # quantas menções faltam e o custo
+python -m radar fatos                           # agrupa as que faltam e mostra os maiores
+python -m radar fatos --refazer                 # refaz tudo (as correções à mão ficam)
+python -m radar fatos-mover --post <post_id> --para 89    # corrige à mão (ou --para novo)
+```
+
+### As rádios (`radar/radios.py` e `radar/transcricao.py`)
+
+O radar ouve o que as rádios do TO postam em vídeo no Instagram: programas, entrevistas e trechos do ar. Ele não grava
+o sinal ao vivo.
+
+**A lista.** As rádios só entram na vigilância depois de aprovadas.
+1. `radios-propor` reúne as candidatas:
+   - as contas da base com cara de rádio (nome, @ ou bio com "rádio", "FM", "radialista"...) ou do tipo
+     `jornalista_radialista`;
+   - com `--descobrir`, as que a busca do Instagram acha para dois tipos de termo:
+     - a lista curada (`radar/dados/radios_to.csv`): as emissoras, as redes (Som Alvorada, Som Araguaia, Som
+       Tocantins, Folha Popular...) e as comunitárias de nome próprio (Radicalmas FM, Ribeira FM, Kennedy FM...);
+     - "rádio <cidade>": nas 15 cidades maiores e em todo município com emissora outorgada, os mais populosos
+       primeiro. Os municípios vêm de `radar/dados/radios_mcom_to.csv`, extraído dos dados abertos do Ministério
+       das Comunicações: 171 outorgas no TO (50 FM, 18 OM e 103 comunitárias) em 100 municípios.
+
+     Antes de ler um perfil, a conta achada precisa casar com o nome da emissora ou, na busca por cidade, ter cara de
+     rádio e citar a cidade. Os termos buscados ficam na tabela `buscas` (fonte `radios_insta`), e a descoberta
+     seguinte continua de onde parou (`--orcamento` limita as leituras de cada vez).
+2. A DeepSeek classifica cada uma:
+   - emissora, programa, radialista ou não;
+   - a cidade e a UF, conferidas no IBGE;
+   - se publica vídeos.
+3. A planilha `data/radios_propostas.xlsx` traz as do TO primeiro, com a coluna "aprovar".
+4. `radios-aprovar --planilha` grava a lista `radios_to`, que a vigilância visita no mínimo a cada 6 h.
+
+**Os vídeos, sem leitura a mais.** A grade do perfil já traz, em cada vídeo, um manifesto DASH com uma faixa só de áudio
+(uns 55 kbps, menos de 1 MB por minuto). A vigilância põe na fila (tabela `transcricoes`) os vídeos de até 7 dias das
+rádios aprovadas. O endereço vence em uns 2 dias e é renovado a cada visita.
+
+**A transcrição** (`transcrever`, numa janela própria e em prioridade baixa):
+1. baixa só o áudio, direto da rede de distribuição, sem a conta do Instagram;
+2. converte para 16 kHz mono com o ffmpeg (até 15 minutos por vídeo) e apaga o arquivo;
+3. transcreve com o faster-whisper `small` em int8, na CPU, com detecção de voz. Trechos de música, repetições e
+   frases inventadas são descartados.
+4. Com energia na fala:
+   - o banco guarda só os trechos sobre energia, com um vizinho de cada lado e os telefones mascarados;
+   - a DeepSeek analisa o post com esses trechos;
+   - a menção negativa vira alerta;
+   - a consolidação junta a mesma notícia.
+
+A transcrição completa e o modelo (~0,5 GB) ficam em `RADAR_MIDIA_DIR` (no `.env`; nesta máquina, `E:\RadarDados`),
+fora do repositório. O teto é de 240 minutos de áudio por dia (`RADAR_TRANSCRICAO_MINUTOS_DIA`).
+
+O piloto de 11/nov, com o `small`, transcreveu 128 s de fala em 15 s num Ryzen 7 5700X. A ficha do post mostra a seção
+"Fala no vídeo", e o relatório, a coluna `fala_no_video`.
+
+```powershell
+python -m radar radios-propor --descobrir        # levanta, classifica e gera a planilha para aprovar
+powershell -ExecutionPolicy Bypass -File .\descobrir-radios.ps1 -Orcamento 200   # o mesmo, numa janela própria
+python -m radar radios-aprovar --planilha        # grava as marcadas com "sim"
+python -m radar transcrever --dry-run            # a fila e o uso do dia
+powershell -ExecutionPolicy Bypass -File .\transcrever.ps1 -Horas 24    # janela própria, ao lado da vigilância
+python -m radar transcrever --uma-vez --limite 10 --modelo medium        # comparar com o modelo maior
+```
+
+### Rádios ao vivo (`radar/aovivo.py`)
+
+O radar ouve os jornais da manhã das rádios do TO, das 6h às 9h, pelo sinal na internet. A lista fica em
+`radar/dados/radios_ao_vivo.csv`, com os endereços vindos do catálogo aberto Radio Browser e do site de cada rádio:
+- Unitins FM 96.1, Capital FM 87.9, Conexão FM 98.1, Meio Norte 91.1 e Jovem FM, de Palmas;
+- Rádio Tocantins, de Porto Nacional.
+
+Para tirar uma rádio, marque `ativo = não`. Para mudar o horário, edite `inicio` e `fim`.
+
+O gravador roda dentro do `transcrever`, numa thread à parte:
+1. grava um ffmpeg por rádio, em blocos de 30 minutos, em Opus 24 kbps (uns 5 MB por bloco, em
+   `RADAR_MIDIA_DIR/aovivo`);
+2. cada bloco vira um "post" da rede `radio` e entra na fila da transcrição, como os vídeos;
+3. a fala que toca em energia vai para a análise, com a rádio e o horário, e o aviso de que a rádio também dá notícia
+   de fora;
+4. a menção negativa vira alerta ("rádio ao vivo unitins_fm"), e o áudio é apagado depois de transcrito.
+
+Se o sinal cair, o bloco gravado até ali vale, e a rádio é tentada de novo em 5 minutos.
+
+As 6 rádios por 3 h dão 18 h de áudio por dia, uns 2 a 3 h de CPU com o `small`. O teto diário é de 1.500 min
+(`RADAR_TRANSCRICAO_MINUTOS_DIA`). Os blocos mais novos são transcritos primeiro.
+
+```powershell
+python -m radar ao-vivo-testar                  # grava 15 s de cada rádio para conferir os endereços
+powershell -ExecutionPolicy Bypass -File .\transcrever.ps1 -Horas 168   # vídeos + ao vivo, numa janela própria
+python -m radar transcrever --sem-ao-vivo       # só os vídeos
+```
+
+### Sites de notícia pelo feed (`radar/sites.py`)
+
+O Google Notícias não indexa boa parte dos sites pequenos do TO. Por isso o radar também lê direto o feed de uma base
+de sites (tabela `sites`), que junta três fontes:
+- a curadoria, em `radar/dados/sites_to.csv`:
+  - os jornais do TO (Conexão Tocantins, Cleber Toledo, Gazeta do Cerrado, g1 Tocantins...);
+  - o jornalismo investigativo do TO (Jornal Opção TO, NC News / Norte Investigação);
+  - os investigativos nacionais (Agência Pública, Repórter Brasil, Intercept, InfoAmazonia, Amazônia Real, ((o))eco);
+- os veículos que o Google Notícias já trouxe;
+- os sites das contas de notícia, rádio e jornalista do TO no Instagram (o link da bio). Entram aí as rádios que
+  publicam as suas matérias no site.
+
+`sites-descobrir` acha o feed de cada site, nesta ordem:
+1. o RSS anunciado na página;
+2. os endereços comuns do WordPress e do Blogger;
+3. a API do WordPress.
+
+Agregadores de links, redes sociais e o site da Energisa ficam de fora.
+
+A vigilância faz uma rodada por hora, sem gastar leitura do Instagram:
+- lê os feeds;
+- grava só as matérias dos últimos 14 dias que passam no filtro de energia. Os sites de escopo nacional, como os
+  veículos do Google Notícias e os investigativos nacionais, só entram com matéria que cita o Tocantins;
+- a cada 6 h, roda também o Google Notícias;
+- a DeepSeek analisa com o título e o começo do texto, a matéria negativa vira alerta e a consolidação junta a mesma
+  notícia vinda de site e de Instagram.
+
+```powershell
+python -m radar sites-descobrir          # monta a base e acha os feeds (refaz a cada 30 dias, ou --reverificar)
+python -m radar sites                    # lê agora, analisa e alerta (a vigilância faz isso a cada hora)
+python -m radar sites --dry-run          # a base: quantos sites, quantos com feed, por tipo
+```
+
+### Threads e X (`radar/redes.py`)
+
+O ponto de partida é a menção, como na busca de posts do Instagram:
+1. a busca por palavra-chave acha os posts sobre energia;
+2. a investigação situa quem postou;
+3. os posts do TO vão para a análise e para os alertas.
+
+Cada rede tem a sua conta no navegador: a `conta7` (uma conta do Instagram criada só para o Threads) e a `x1`. O
+arquivo `data/navegador/redes-<conta>.txt` diz em que rede cada conta trabalha. Sem ele, a conta é só do Instagram.
+Assim, a `conta7` não entra nos comandos do Instagram, mesmo que o login do Threads deixe o cookie de lá.
+
+| Item | Threads | X |
+|---|---|---|
+| Termos (`busca_posts.TERMOS_POR_REDE`) | 12 curtos, a cada 6 h | 5 consultas combinadas, sem retuítes, a cada 3 h |
+| Investigação | o veredito do Instagram vale para o mesmo @, sem leitura nem IA | a bio e o local do perfil já entram na etapa 1 |
+| Formato | post_id com o prefixo `th_` | post_id com o prefixo `x_` |
+
+A análise recebe a localização provável da conta e a regra "fato fora do TO não conta". O alerta diz a rede ("X @fulano").
+
+Situação em 11/nov:
+- prontos: a busca e a investigação por rede, o login por rede e o piloto;
+- faltam: os leitores das respostas de cada rede e a entrada na vigilância. Eles saem do piloto, sobre as respostas reais.
+
+```powershell
+python -m radar navegador-login --conta conta7 --rede threads   # entre no Threads na janela e feche
+python -m radar navegador-login --conta x1 --rede x             # entre no X na janela e feche
+python -m radar navegador-contas                                # cada conta com a sua rede
+python -m radar piloto-rede --rede threads --conta conta7 --termo energisa --perfil @<um_perfil_do_TO>
+python -m radar piloto-rede --rede x --conta x1 --termo "energisa palmas"
 ```
 
 ### Histórico (olhar para trás)

@@ -3,7 +3,7 @@ import math
 import sys
 from collections import Counter
 from contextlib import contextmanager
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import typer
@@ -82,10 +82,12 @@ def navegador_contas():
     if not contas:
         typer.echo("Nenhuma conta. Rode: python -m radar navegador-login")
     for conta in contas:
-        sessao = navegador.tem_sessao(navegador.pasta_conta(conta))
-        estado = "logada" if sessao else "sem login" if sessao is False else "em uso agora"
+        estados = []
+        for rede in sorted(navegador.redes_da_conta(conta)):
+            sessao = navegador.tem_sessao(navegador.pasta_conta(conta), rede)
+            estados.append(f"{rede}: " + ("logada" if sessao else "sem login" if sessao is False else "em uso agora"))
         motivo = navegador.desativada(conta)
-        typer.echo(f"  {conta:15} {estado}" + (f"; DESATIVADA: {motivo}" if motivo else ""))
+        typer.echo(f"  {conta:15} {', '.join(estados)}" + (f"; DESATIVADA: {motivo}" if motivo else ""))
 
 
 def _contas_do_navegador(contas: str | None) -> list[str]:
@@ -94,6 +96,9 @@ def _contas_do_navegador(contas: str | None) -> list[str]:
 
     nomes = [c.strip() for c in contas.split(",") if c.strip()] if contas else [
         c for c in navegador.contas_configuradas() if navegador.tem_sessao(navegador.pasta_conta(c)) is not False]
+    for conta in [c for c in nomes if "instagram" not in navegador.redes_da_conta(c)]:
+        typer.echo(f"{conta} fica de fora: é conta do {', '.join(sorted(navegador.redes_da_conta(conta)))}", err=True)
+        nomes.remove(conta)
     for conta in [c for c in nomes if navegador.desativada(c)]:
         typer.echo(f"{conta} fica de fora, desativada: {navegador.desativada(conta)}", err=True)
         nomes.remove(conta)
@@ -109,11 +114,17 @@ OPCAO_CONTAS = typer.Option(None, "--contas", help="Contas do navegador, separad
 
 @app.command("navegador-login")
 def navegador_login(conta: str = typer.Option("principal", help="Nome da conta (cada uma tem o seu perfil do Edge; "
-                                                                "use várias para coletar em paralelo).")):
-    """Abre o Edge para você entrar no Instagram. A sessão fica em data/navegador/; a senha fica só no navegador."""
+                                                                "use várias para coletar em paralelo)."),
+                    rede: str = typer.Option("instagram", help="instagram, threads ou x. Conta nova criada para o "
+                                                               "Threads ou o X fica só naquela rede.")):
+    """Abre o Edge para você entrar na rede. A sessão fica em data/navegador/; a senha fica só no navegador."""
     from . import navegador
+    from .redes import REDES
 
-    if not navegador.entrar(typer.echo, conta=conta):
+    if rede not in REDES:
+        typer.echo(f"Rede desconhecida: {rede}. Use: {', '.join(REDES)}", err=True)
+        raise typer.Exit(1)
+    if not navegador.entrar(typer.echo, conta=conta, rede=rede):
         typer.echo("Login não concluído. Rode o comando de novo e entre na janela do Edge.", err=True)
         raise typer.Exit(1)
 
@@ -125,6 +136,34 @@ def navegador_abrir(conta: str = typer.Option("principal", help="Nome da conta."
 
     if not navegador.abrir_edge(conta, typer.echo):
         raise typer.Exit(1)
+
+
+@app.command("piloto-rede")
+def piloto_rede(rede: str = typer.Option("threads", help="threads ou x."),
+                conta: str = typer.Option(..., help="A conta logada na rede (ex.: conta7 no Threads, x1 no X)."),
+                termo: str = typer.Option("energisa", help="O termo da busca."),
+                perfil: str = typer.Option(None, help="Um @ para ler o perfil também."),
+                ver: Path = typer.Option(None, "--ver", help="Só mostra o resumo de um piloto já guardado.")):
+    """Fase 3: uma busca (e um perfil) no Threads ou no X, com tudo o que o site mandou guardado em data/raw/, para
+    escrever os leitores sobre amostras reais. No máximo duas leituras."""
+    from . import navegador, redes
+
+    if ver:
+        for linha in redes.resumo_piloto(ver):
+            typer.echo(linha)
+        return
+    if rede not in ("threads", "x") or rede not in navegador.redes_da_conta(conta):
+        typer.echo(f"A conta {conta} não está no {rede}. Rode: python -m radar navegador-login --conta {conta} "
+                   f"--rede {rede}", err=True)
+        raise typer.Exit(1)
+    try:
+        caminho = redes.piloto(rede, navegador.pasta_conta(conta), termo, perfil)
+    except redes.BloqueioRede as erro:
+        typer.echo(str(erro), err=True)
+        raise typer.Exit(2)
+    typer.echo(f"Guardado em {caminho}")
+    for linha in redes.resumo_piloto(caminho):
+        typer.echo(linha)
 
 
 @app.command("navegador-desativar")
@@ -540,6 +579,11 @@ def vigiar(horas: float = typer.Option(8, help="Por quanto tempo fica rodando (e
            contas_nav: str = OPCAO_CONTAS,
            sem_ia: bool = typer.Option(False, "--sem-ia", help="Não classifica na hora (deixa para o mencoes)."),
            dry_run: bool = typer.Option(False, "--dry-run", help="Só mostra prioridades e capacidade."),
+           volta: bool = typer.Option(False, "--volta", help="Uma volta: passa uma vez por toda página sem visita nas "
+                                                            "últimas RADAR_VIGIA_VOLTA_H horas (4) e termina, a "
+                                                            "RADAR_VIGIA_VOLTA_POR_HORA leituras por hora por conta "
+                                                            "(60); --horas vira o limite. O agendar.ps1 faz duas por "
+                                                            "dia."),
            parar: bool = typer.Option(False, "--parar", help="Pede para a vigilância em andamento parar (cada conta "
                                                             "termina a visita atual).")):
     """Vigilância contínua: visita primeiro as páginas mais atrasadas, por prioridade, com as contas em paralelo.
@@ -548,7 +592,7 @@ def vigiar(horas: float = typer.Option(8, help="Por quanto tempo fica rodando (e
     a cada 2 h, os demais portais a cada 6 h, o resto uma vez por dia (ajuste em RADAR_VIGIA_*_H). As contas entram com
     alguns minutos de diferença, contas logadas depois entram sozinhas, e duas contas barradas pelo Instagram em menos
     de 1 hora param todas. Posts novos que passam no filtro vão na hora para a IA, e as menções negativas entram em
-    data/alertas.txt."""
+    data/alertas.txt. Com --volta, passa uma vez por todas as páginas e termina."""
     from collections import Counter
 
     from . import vigia
@@ -560,6 +604,28 @@ def vigiar(horas: float = typer.Option(8, help="Por quanto tempo fica rodando (e
     con = db.conectar()
     horas_por_conta = vigia.intervalos(con)
     nomes = _contas_do_navegador(contas_nav)
+    if volta:
+        inicio = datetime.now(timezone.utc)
+        faltam = len(vigia.atrasadas(con, inicio, horas_por_conta, volta=True))
+        leituras = faltam * vigia.LEITURAS_POR_PAGINA_NA_VOLTA / len(nomes)  # por conta
+        por_hora = min(config.VIGIA_VOLTA_POR_HORA, config.NAV_MAX_HORA)
+        typer.echo(f"Volta: {faltam} de {len(horas_por_conta)} páginas sem visita nas últimas "
+                   f"{config.VIGIA_VOLTA_H:g} h, ~{leituras * len(nomes):.0f} leituras, ~{leituras:.0f} por conta com "
+                   f"{len(nomes)} conta(s) do navegador. A {por_hora:g} leituras por hora por conta, "
+                   f"~{f'{leituras / por_hora:.1f}'.replace('.', ',')} h (teto: {config.NAV_MAX_HORA} por hora e "
+                   f"{config.NAV_MAX_DIA} por dia).")
+        if dry_run:
+            return
+        con.close()
+        vigia.executar(nomes, horas, com_ia=not sem_ia, aviso=typer.echo, volta=True)
+        con = db.conectar()
+        faltam = len(vigia.atrasadas(con, datetime.now(timezone.utc), vigia.intervalos(con), volta=True,
+                                     inicio=inicio))
+        minutos = (datetime.now(timezone.utc) - inicio).total_seconds() / 60
+        typer.echo(f"Volta completa em {minutos:.0f} min." if not faltam else
+                   f"Volta incompleta em {minutos:.0f} min: {faltam} páginas ficaram sem visita (limite de horas, "
+                   "parada ou contas barradas).")
+        return
     por_prioridade = Counter(horas_por_conta.values())
     typer.echo("Contas por intervalo: " + ", ".join(f"{n} a cada {h:g} h" for h, n in sorted(por_prioridade.items())))
     visitas = vigia.visitas_por_dia(horas_por_conta)
@@ -591,6 +657,225 @@ def mencoes_(reanalisar: bool = typer.Option(False, help="Refaz posts já analis
         return
     _exigir_deepseek()
     _com_deepseek(lambda cliente: mencoes.analisar(con, cliente, posts, aviso=typer.echo))
+    _consolidar_fatos(con)
+
+
+def _consolidar_fatos(con) -> None:
+    """A mesma notícia (fatos.py) para as menções que acabaram de ser analisadas. Centavos; sem IA, fica para depois."""
+    from . import classificacao_deepseek as ds, fatos
+
+    try:
+        fatos.consolidar(con, ds.criar_cliente(), aviso=typer.echo)
+    except Exception as erro:  # sem chave, sem saldo ou sem conexão: o próximo comando (ou a vigilância) consolida
+        typer.echo(f"Mesma notícia: ficou para depois ({type(erro).__name__}).", err=True)
+
+
+@app.command("fatos")
+def fatos_(refazer: bool = typer.Option(False, "--refazer", help="Desfaz os agrupamentos (menos os corrigidos à mão) "
+                                                                    "e agrupa de novo."),
+           desde: str = typer.Option(None, help="Só menções publicadas a partir de AAAA-MM-DD."),
+           ver: int = typer.Option(10, help="Quantos agrupamentos maiores mostrar no fim."),
+           dry_run: bool = typer.Option(False, "--dry-run", help="Só mostra o que falta e o custo.")):
+    """A mesma notícia: junta as menções (posts, stories e matérias) que tratam do mesmo fato. Primeiro pelo link em
+    comum, depois pela semelhança do resumo; nos casos parecidos, a DeepSeek decide. A ficha do post mostra o
+    agrupamento ("a mesma notícia em N perfis") e o relatório ganha a aba "Mesma notícia"."""
+    from . import classificacao_deepseek as ds, fatos
+
+    con = db.conectar()
+    pendentes = fatos.pendentes(con, desde)
+    typer.echo(f"Situação: {fatos.situacao(con)}")
+    typer.echo(f"{len(pendentes)} menções sem agrupamento. Custo estimado na DeepSeek: até US$ "
+               f"{fatos.custo(len(pendentes)):.2f}")
+    if not dry_run and (pendentes or refazer):
+        _exigir_deepseek()
+        cliente = ds.criar_cliente()
+        resumo = (fatos.refazer if refazer else fatos.consolidar)(con, cliente, desde=desde, aviso=typer.echo)
+        typer.echo(f"Resultado: {dict(resumo)}")
+    for f in fatos.maiores(con, ver):
+        typer.echo(f"  #{f['id']}: {f['posts']} posts de {f['perfis']} perfis, {f['primeira']['data'][:10]} a "
+                   f"{f['ultima']['data'][:10]}, {f['interacoes']} interações · {f['titulo'][:90]}")
+
+
+@app.command("fatos-revisar")
+def fatos_revisar(dias: float = typer.Option(None, help="Só pares com um agrupamento desses últimos dias (sem: "
+                                                        "todos)."),
+                  sem_ia: bool = typer.Option(False, "--sem-ia", help="Só junta os pares óbvios pelo texto."),
+                  dry_run: bool = typer.Option(False, "--dry-run", help="Só conta os pares e o custo.")):
+    """Junta os agrupamentos da mesma notícia que ficaram separados: os quase iguais pelo texto (ou o post e o story
+    do mesmo perfil no mesmo dia), sem IA; os outros pares parecidos, a DeepSeek decide. Cada decisão fica gravada e
+    não é perguntada de novo. A vigilância faz o mesmo com os agrupamentos dos últimos 3 dias."""
+    from datetime import datetime, timezone
+
+    from . import classificacao_deepseek as ds, fatos
+
+    con = db.conectar()
+    previa = fatos.revisar(con, dias=dias, dry_run=True)
+    duvidas = previa["pares"] - previa["obvios"]
+    typer.echo(f"{previa['pares']} pares parecidos: {previa['obvios']} óbvios (sem IA) e {duvidas} para a DeepSeek "
+               f"(até US$ {fatos.custo(duvidas):.2f}).")
+    if dry_run:
+        return
+    if not fatos.reservar_vez(con, "revisao", datetime.now(timezone.utc)):
+        typer.echo("A vigilância está consolidando agora; tente de novo em alguns minutos.", err=True)
+        raise typer.Exit(1)
+    try:
+        cliente = None
+        if not sem_ia and duvidas:
+            _exigir_deepseek()
+            cliente = ds.criar_cliente()
+        resumo = fatos.revisar(con, cliente, dias=dias, aviso=typer.echo)
+    finally:
+        fatos.liberar_vez(con)
+    typer.echo(f"Resultado: {dict(resumo)}")
+    typer.echo(f"Situação: {fatos.situacao(con)}")
+
+
+@app.command("estimar-stories")
+def estimar_stories(dias: float = typer.Option(None, help="Só os stories dos últimos tantos dias (sem: todos).")):
+    """Interações estimadas dos stories sobre energia: a mediana dos posts de feed da conta mais próximos no tempo,
+    com teto de 5% dos seguidores. A vigilância recalcula os dos últimos 30 dias a cada 10 minutos."""
+    from . import estimativa
+
+    con = db.conectar()
+    mudaram = estimativa.atualizar(con, dias)
+    linhas = con.execute("SELECT COUNT(*), COUNT(interacoes_estimadas), SUM(interacoes_estimadas) FROM posts p "
+                         "JOIN mencoes x ON x.rede = p.rede AND x.post_id = p.post_id AND x.sobre_energia = 1 "
+                         "WHERE p.rede = 'instagram' AND p.tipo = 'Story'").fetchone()
+    typer.echo(f"{mudaram} estimativas novas ou mudadas. Stories sobre energia: {linhas[0]}, com estimativa: "
+               f"{linhas[1]}, somando {linhas[2] or 0} interações estimadas.")
+
+
+@app.command("fatos-mover")
+def fatos_mover(post: str = typer.Option(..., help="post_id da menção (a rede web usa o id da matéria)."),
+                para: str = typer.Option(..., help="Número do agrupamento de destino, ou 'novo'."),
+                rede: str = typer.Option("instagram", help="instagram ou web.")):
+    """Corrige à mão o agrupamento de uma menção. A correção fica mesmo depois de um `fatos --refazer`."""
+    from . import fatos
+
+    con = db.conectar()
+    try:
+        fato_id = fatos.mover(con, rede, post, None if para == "novo" else int(para))
+    except ValueError as erro:
+        typer.echo(str(erro), err=True)
+        raise typer.Exit(1)
+    typer.echo(f"{rede}:{post} agora está no agrupamento #{fato_id}: {fatos.resumo(con, fato_id)['titulo']}")
+
+
+@app.command("radios-propor")
+def radios_propor(descobrir: bool = typer.Option(False, "--descobrir", help="Busca no Instagram as rádios da lista "
+                                                                            "curada e 'rádio <cidade>' (gasta leituras)."),
+                  orcamento: int = typer.Option(150, help="Máximo de leituras da descoberta."),
+                  conta: str = typer.Option("principal", help="Conta do navegador para a descoberta (fora da "
+                                                              "vigilância)."),
+                  dry_run: bool = typer.Option(False, "--dry-run", help="Só conta as candidatas.")):
+    """Rádios do TO: levanta as contas de emissora, programa e radialista, a DeepSeek classifica, e grava a planilha
+    data/radios_propostas.xlsx para o usuário marcar a coluna "aprovar". Depois: radar radios-aprovar --planilha."""
+    from . import radios
+
+    con = db.conectar()
+    if descobrir and not dry_run:
+        with _coletor("navegador", con, conta=conta) as coletor:
+            typer.echo(f"Descoberta: {dict(radios.descobrir(con, coletor, orcamento, typer.echo))}")
+    candidatas = radios.candidatas(con)
+    pendentes = radios.nao_classificadas(con, candidatas)
+    typer.echo(f"{len(candidatas)} contas com cara de rádio; {len(pendentes)} ainda sem classificação "
+               f"(até US$ {ds_custo(len(pendentes)):.2f} na DeepSeek).")
+    if dry_run:
+        return
+    if pendentes:
+        _exigir_deepseek()
+        from . import classificacao_deepseek as ds
+
+        typer.echo(f"Classificação: {dict(radios.classificar(con, ds.criar_cliente(), pendentes, aviso=typer.echo))}")
+    caminho, n = radios.propor(con)
+    typer.echo(f"{n} rádios, programas e radialistas em {caminho}. Marque 'sim' na coluna 'aprovar' e rode: "
+               "python -m radar radios-aprovar --planilha")
+
+
+def ds_custo(n: int) -> float:
+    from . import classificacao_deepseek as ds
+
+    return ds.custo(n)
+
+
+@app.command("radios-aprovar")
+def radios_aprovar(planilha: bool = typer.Option(False, "--planilha", help="Lê a coluna 'aprovar' de "
+                                                                          "data/radios_propostas.xlsx."),
+                   contas: str = typer.Option("", help="Ou as contas, separadas por vírgula.")):
+    """Grava as rádios aprovadas na lista radios_to: a vigilância passa a visitá-las (no mínimo a cada 6 h) e os
+    vídeos delas entram na transcrição. A lista é substituída pela nova escolha."""
+    from . import radios
+
+    escolhidas = radios.aprovadas_na_planilha() if planilha else [c for c in contas.split(",") if c.strip()]
+    if not escolhidas:
+        typer.echo("Nenhuma conta aprovada: marque 'sim' na planilha ou passe --contas.", err=True)
+        raise typer.Exit(1)
+    typer.echo(f"Lista radios_to: {radios.aprovar(db.conectar(), escolhidas)} contas.")
+
+
+@app.command("radios-lista")
+def radios_lista():
+    """As rádios aprovadas (lista radios_to)."""
+    from . import radios
+
+    con = db.conectar()
+    for u in sorted(radios.da_lista(con)):
+        typer.echo(f"  @{u}")
+
+
+@app.command("transcrever")
+def transcrever(horas: float = typer.Option(24, help="Por quanto tempo fica olhando a fila (a cada 5 min)."),
+                uma_vez: bool = typer.Option(False, "--uma-vez", help="Uma passada pela fila e termina."),
+                limite: int = typer.Option(10, help="Máximo de vídeos na passada (com --uma-vez)."),
+                modelo: str = typer.Option(config.TRANSCRICAO_MODELO, help="small (rápido) ou medium (melhor e "
+                                                                           "~3x mais lento)."),
+                sem_ia: bool = typer.Option(False, "--sem-ia", help="Só transcreve; a análise fica para depois."),
+                sem_ao_vivo: bool = typer.Option(False, "--sem-ao-vivo", help="Não grava as rádios ao vivo."),
+                dry_run: bool = typer.Option(False, "--dry-run", help="Só mostra a fila.")):
+    """Vídeos das rádios (lista radios_to) e jornais da manhã ao vivo (radios_ao_vivo.csv, 6h às 9h): grava,
+    transcreve no PC e manda para a análise a fala que toca em energia; a menção negativa vira alerta. Roda numa
+    janela própria (transcrever.ps1), ao lado da vigilância, que enche a fila dos vídeos. O modelo, o áudio
+    passageiro e as transcrições completas ficam em RADAR_MIDIA_DIR."""
+    from datetime import datetime, timezone
+
+    from . import transcricao, vigia
+
+    con = db.conectar()
+    situacao = transcricao.situacao(con)
+    typer.echo(f"Fila: {situacao['estados'] or 'vazia'}; ~{situacao['minutos_na_fila']:.0f} min de áudio à espera, "
+               f"{situacao['minutos_no_dia']:.0f} de {config.TRANSCRICAO_MINUTOS_DIA:.0f} min nas últimas 24 h; "
+               f"{situacao['com_energia']} vídeos com fala sobre energia. Pasta: {config.MIDIA_DIR}")
+    if dry_run:
+        return
+    ia = None
+    if not sem_ia:
+        _exigir_deepseek()
+        if vigia.ia_disponivel():
+            from . import classificacao_deepseek as ds
+
+            ia = ds.criar_cliente()
+        else:
+            typer.echo("A DeepSeek não respondeu: transcrevo, e a análise fica para o comando mencoes.", err=True)
+    transcricao.prioridade_baixa()
+    transcritor = transcricao.Transcritor(modelo)
+    if uma_vez:
+        typer.echo(f"{dict(+transcricao.rodar(con, ia, transcritor, limite, typer.echo))}")
+        return
+    ate = datetime.now(timezone.utc) + timedelta(hours=horas)
+    try:
+        typer.echo(f"{dict(+transcricao.vigiar(con, ia, transcritor, ate, typer.echo, ao_vivo=not sem_ao_vivo))}")
+    except KeyboardInterrupt:
+        typer.echo("parando a pedido")
+
+
+@app.command("ao-vivo-testar")
+def ao_vivo_testar(segundos: int = typer.Option(15, help="Segundos gravados de cada rádio.")):
+    """Grava alguns segundos do sinal de cada rádio de radar/dados/radios_ao_vivo.csv, para conferir os endereços.
+    Nada vai para o banco."""
+    from . import aovivo
+
+    resultado = aovivo.testar(segundos, typer.echo)
+    typer.echo(f"{sum(resultado.values())} de {len(resultado)} rádios com sinal.")
 
 
 @app.command("triar-stories")
@@ -632,6 +917,7 @@ def triar_stories(desde: str = typer.Option(None, help="Só stories gravados a p
         sobre = sum(1 for p in marcados if con.execute(
             "SELECT sobre_energia FROM mencoes WHERE rede = ? AND post_id = ?", (p["rede"], p["post_id"])).fetchone()[0])
         typer.echo(f"Confirmados pela análise completa como sobre energia: {sobre} de {len(marcados)}.")
+        _consolidar_fatos(con)
 
 
 @app.command("noticias")
@@ -654,7 +940,47 @@ def noticias_(dias: int = typer.Option(90, help="Só matérias dos últimos N di
         _exigir_deepseek()
         _com_deepseek(lambda cliente: mencoes.analisar(con, cliente, posts, aviso=typer.echo))
         typer.echo(f"{noticias.alertas(con, posts, typer.echo)} alertas de matéria negativa em data/alertas.txt.")
+        _consolidar_fatos(con)
     typer.echo(f"Depois: {noticias.situacao(con)}")
+
+
+@app.command("sites-descobrir")
+def sites_descobrir(reverificar: bool = typer.Option(False, "--reverificar", help="Procura de novo o feed de todos."),
+                    dry_run: bool = typer.Option(False, "--dry-run", help="Só conta os candidatos, sem acessar.")):
+    """Monta a base de sites de notícia (curadoria, veículos do Google Notícias e links da bio das contas de notícia,
+    rádio e jornalista do TO) e acha o feed de cada um. Grátis; um a oito pedidos por site."""
+    from . import sites
+
+    con = db.conectar()
+    base = sites.base_candidata(con)
+    typer.echo(f"{len(base)} sites candidatos: {dict(Counter(s['origem'] for s in base.values()))}")
+    if dry_run:
+        return
+    typer.echo(f"Descoberta: {dict(sites.descobrir(con, typer.echo, reverificar=reverificar))}")
+    typer.echo(f"Base: {sites.situacao(con)}")
+
+
+@app.command("sites")
+def sites_(dias: int = typer.Option(14, help="Só matérias dos últimos N dias."),
+           sem_ia: bool = typer.Option(False, "--sem-ia", help="Só lê e grava; a IA fica para depois."),
+           dry_run: bool = typer.Option(False, "--dry-run", help="Só mostra a base.")):
+    """Lê agora o feed dos sites da base e grava as matérias de energia (a vigilância faz isso a cada hora). A IA
+    analisa as pendentes e a matéria negativa vira alerta."""
+    from . import noticias, sites
+
+    con = db.conectar()
+    typer.echo(f"Base: {sites.situacao(con)}")
+    if dry_run:
+        return
+    typer.echo(f"Leitura: {dict(sites.coletar(con, typer.echo, dias=dias))}")
+    posts = noticias.candidatos(con)
+    typer.echo(f"{len(posts)} matérias com palavras-chave de energia para analisar (até US$ "
+               f"{mencoes.custo(len(posts)):.2f} na DeepSeek).")
+    if posts and not sem_ia:
+        _exigir_deepseek()
+        _com_deepseek(lambda cliente: mencoes.analisar(con, cliente, posts, aviso=typer.echo))
+        typer.echo(f"{noticias.alertas(con, posts, typer.echo)} alertas de matéria negativa em data/alertas.txt.")
+        _consolidar_fatos(con)
 
 
 @app.command()
@@ -1133,6 +1459,7 @@ def buscar_posts_(conta: str = typer.Option("principal", help="Conta do navegado
         from .vigia import alertar
 
         typer.echo(f"{alertar(con, posts, typer.echo)} alertas de menção negativa em data/alertas.txt.")
+        _consolidar_fatos(con)
     typer.echo(f"Depois: {busca_posts.situacao(con)}")
 
 

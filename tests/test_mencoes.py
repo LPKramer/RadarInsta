@@ -127,7 +127,7 @@ def test_relatorio_engajamento_e_repercussao(con, municipios, tmp_path):
     caminho, n = relatorio.exportar(con, tmp_path / "mencoes.xlsx")
     livro = load_workbook(caminho)
     assert n == 4 and livro.sheetnames == ["Menções", "Por tema", "Por setor", "Por município", "Sentimento x alcance",
-                                           "Comentários"]
+                                           "Comentários", "Mesma notícia"]
     por_municipio = {l[0]: l[1] for l in livro["Por município"].iter_rows(min_row=2, values_only=True)}
     assert por_municipio == {"Gurupi": 2, "Palmas": 1, "(não identificado)": 1}
 

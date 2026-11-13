@@ -283,3 +283,24 @@ def test_ritmo_uniforme_espalha_as_leituras_pelo_dia(monkeypatch):
     # Perto do teto, não cai abaixo do ritmo de um dia inteiro (800 em 24 h).
     ritmo.leituras = [agora[0]] * 790
     assert ritmo.intervalo_uniforme() == pytest.approx(3600 / (800 / 24))
+
+
+def test_ritmo_fixo_da_volta_nao_desacelera_com_as_leituras_do_dia(monkeypatch):
+    monkeypatch.setattr(config, "NAV_MAX_HORA", 100)
+    monkeypatch.setattr(config, "NAV_MAX_DIA", 800)
+    agora = [1_000_000.0]
+    pausas = []
+
+    def dormir(segundos):
+        pausas.append(segundos)
+        agora[0] += segundos
+
+    ritmo = nav.Ritmo(None, dormir, lambda: agora[0], uniforme=True, por_hora=60)
+    ritmo.leituras = [agora[0] - 7200] * 340  # o que a conta leu nas duas voltas anteriores
+    for _ in range(4):
+        ritmo.esperar()
+    # 60 por hora = 60 s entre leituras (com variação de 30%). Espalhando o teto do dia seriam ~94 s.
+    assert ritmo.intervalo_uniforme() == 60
+    assert len(pausas) == 3 and all(0.7 * 60 <= p <= 1.3 * 60 for p in pausas)
+    # Um ritmo pedido acima do teto por hora fica no teto.
+    assert nav.Ritmo(None, dormir, lambda: agora[0], uniforme=True, por_hora=500).intervalo_uniforme() == 36

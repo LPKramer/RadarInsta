@@ -172,7 +172,9 @@ SQL_POSTS = f"""
 SELECT p.*, k.tipo AS tipo_conta, c.seguidores, c.engajamento_medio,
        (SELECT GROUP_CONCAT(m.nome, ', ') FROM conta_municipio cm JOIN municipios m ON m.ibge_id = cm.ibge_id
          WHERE cm.rede = p.rede AND cm.username = p.username AND cm.fonte = 'ia') AS municipios_conta,
-       (SELECT t.energia FROM triagem t WHERE t.rede = p.rede AND t.post_id = p.post_id) AS triagem_energia
+       (SELECT t.energia FROM triagem t WHERE t.rede = p.rede AND t.post_id = p.post_id) AS triagem_energia,
+       (SELECT tr.trechos FROM transcricoes tr WHERE tr.rede = p.rede AND tr.post_id = p.post_id
+         AND tr.energia = 1) AS transcricao
 FROM posts p
 JOIN contas c ON c.rede = p.rede AND c.username = p.username
 LEFT JOIN classificacoes k ON k.rede = p.rede AND k.username = p.username
@@ -201,20 +203,45 @@ def candidatos(con, reanalisar: bool = False, desde: str | None = None, limite: 
     if so_triagem:
         sql = sql.replace(" ORDER BY", " AND EXISTS (SELECT 1 FROM triagem t WHERE t.rede = p.rede "
                                        "AND t.post_id = p.post_id AND t.energia = 1) ORDER BY")
-    posts = [dict(l) for l in con.execute(sql, args) if l["triagem_energia"] or menciona_energia(l["legenda"])]
+    # A transcrição só aparece quando a fala do vídeo tem energia (transcricao.py).
+    posts = [dict(l) for l in con.execute(sql, args)
+             if l["triagem_energia"] or l["transcricao"] or menciona_energia(l["legenda"])]
     return posts[:limite] if limite else posts
+
+
+def por_id(con, post_ids: list[str], rede: str = "instagram") -> list[dict]:
+    """Os posts dados, com os campos da análise (só de contas monitoradas)."""
+    if not post_ids:
+        return []
+    sql = SQL_POSTS + f" AND p.rede = ? AND p.post_id IN ({', '.join('?' * len(post_ids))})"
+    return [dict(l) for l in con.execute(sql, (rede, *post_ids))]
 
 
 FORMATO_STORY = ("story de 24 horas; a legenda abaixo é o texto lido da imagem (OCR) e dos adesivos, "
                  "e pode ter erros de leitura")
 
 
-FORMATO_MATERIA = ("matéria de site de notícia; abaixo vem só o título. Se o fato não acontece no Tocantins, "
-                   "responda sobre_energia = false")
+FORMATO_MATERIA = ("matéria de site de notícia; abaixo vem o título e, quando o site manda, o começo do texto. Se o "
+                   "fato não acontece no Tocantins, responda sobre_energia = false")
 
 # Post de conta fora da base, achado pela busca por palavra-chave (busca_posts.py): pode ser de outro estado.
 FORMATO_BUSCA = ("post de uma conta fora da base, achado pela busca do Instagram. Se o fato não acontece no "
                  "Tocantins (a Energisa atende outros estados), responda sobre_energia = false")
+
+# Vídeo de rádio (transcricao.py): os trechos da fala que tocam em energia, com o minuto, depois da legenda.
+FORMATO_VIDEO_TRANSCRITO = ("vídeo de rádio ou radialista; depois da legenda vêm os trechos da fala que tocam em "
+                            "energia, transcritos automaticamente (podem ter erros de reconhecimento)")
+TAM_TRANSCRICAO = 2000
+# Rádio ao vivo (aovivo.py): os trechos da fala sobre energia de um bloco de 30 minutos do programa.
+FORMATO_AO_VIVO = ("trecho de programa de rádio do Tocantins, ao vivo; abaixo vêm os trechos da fala que tocam em "
+                   "energia, transcritos automaticamente (podem ter erros de reconhecimento). A rádio também dá "
+                   "notícias de fora: se o fato não acontece no Tocantins, responda sobre_energia = false")
+
+# Threads e X (busca_posts.py e redes.py): a conta vem de fora da base; a investigação dá a localização provável.
+NOMES_REDE = {"threads": "Threads", "x": "X"}
+FORMATO_REDE = ("post do {rede} de uma conta fora da base, achado pela busca. A localização provável da conta vem de "
+                "uma investigação e pode errar. Se o fato não acontece no Tocantins (a Energisa atende outros estados), "
+                "responda sobre_energia = false")
 
 
 def descrever(post: dict) -> str:
@@ -227,14 +254,37 @@ def descrever(post: dict) -> str:
             f"Legenda: {(post.get('legenda') or '')[:TAM_LEGENDA]}",
             "</post>",
         ])
+    if post.get("rede") == "radio":  # bloco do ao vivo (aovivo.py)
+        return "\n".join([
+            "<post>",
+            f"Rádio: {post.get('emissora') or post['username']}",
+            f"Programa: {post.get('legenda') or ''}",
+            f"Formato: {FORMATO_AO_VIVO}",
+            f"Fala no ar: {(post.get('transcricao') or '')[:TAM_TRANSCRICAO]}",
+            "</post>",
+        ])
+    if post.get("rede") in NOMES_REDE:
+        return "\n".join([
+            "<post>",
+            f"Conta: @{post['username']} no {NOMES_REDE[post['rede']]} (localização provável: "
+            f"{post.get('local_provavel') or 'não investigada'})",
+            f"Data: {(post.get('publicado_em') or '')[:10]}",
+            f"Formato: {FORMATO_REDE.format(rede=NOMES_REDE[post['rede']])}",
+            f"Texto: {(post.get('legenda') or '')[:TAM_LEGENDA]}",
+            "</post>",
+        ])
+    fala = post.get("transcricao")
+    formato = (FORMATO_STORY if post.get("tipo") == "Story" else FORMATO_BUSCA if post.get("da_busca")
+               else FORMATO_VIDEO_TRANSCRITO if fala else "post")
     return "\n".join([
         "<post>",
         f"Conta: @{post['username']} ({post.get('tipo_conta') or 'tipo desconhecido'}; cobre: "
         f"{post.get('municipios_conta') or 'não informado'})",
         f"Data: {(post.get('publicado_em') or '')[:10]}",
-        f"Formato: {FORMATO_STORY if post.get('tipo') == 'Story' else FORMATO_BUSCA if post.get('da_busca') else 'post'}",
+        f"Formato: {formato}",
         f"Local marcado: {post.get('local') or ''}",
         f"Legenda: {(post.get('legenda') or '')[:TAM_LEGENDA]}",
+        *([f"Fala no vídeo: {fala[:TAM_TRANSCRICAO]}"] if fala else []),
         "</post>",
     ])
 
@@ -276,7 +326,8 @@ def salvar(con, post: dict, dados: dict, municipios, modelo: str) -> None:
              setor = excluded.setor, sentimento = excluded.sentimento, alcance = excluded.alcance,
              resumo = excluded.resumo, confianca = excluded.confianca, modelo = excluded.modelo,
              analisada_em = excluded.analisada_em""",
-        (post["rede"], post["post_id"], int(dados["sobre_energia"]), int("energisa" in normalizar(post["legenda"])),
+        (post["rede"], post["post_id"], int(dados["sobre_energia"]),
+         int("energisa" in normalizar(f"{post['legenda'] or ''} {post.get('transcricao') or ''}")),
          dados["tema"], dados["setor"], dados["sentimento"], dados["alcance"], dados["resumo"], dados["confianca"],
          modelo, db.agora()),
     )

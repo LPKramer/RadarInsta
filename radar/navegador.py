@@ -95,6 +95,25 @@ def contas_configuradas(pasta: Path | None = None) -> list[str]:
                   key=lambda n: (n != CONTA_PRINCIPAL, n))
 
 
+def arquivo_redes(conta: str, pasta: Path | None = None) -> Path:
+    return (pasta or config.NAVEGADOR_DIR) / f"redes-{conta}.txt"
+
+
+def redes_da_conta(conta: str, pasta: Path | None = None) -> set[str]:
+    """As redes em que a conta trabalha (redes.py). Sem o arquivo, só o Instagram: uma conta criada para o Threads
+    pode ter o cookie do Instagram e, mesmo assim, não entra nos comandos do Instagram."""
+    try:
+        return set(arquivo_redes(conta, pasta).read_text(encoding="utf-8").split()) or {"instagram"}
+    except FileNotFoundError:
+        return {"instagram"}
+
+
+def definir_redes(conta: str, redes: set[str], pasta: Path | None = None) -> None:
+    caminho = arquivo_redes(conta, pasta)
+    caminho.parent.mkdir(parents=True, exist_ok=True)
+    caminho.write_text("\n".join(sorted(redes)) + "\n", encoding="utf-8")
+
+
 def arquivo_desativada(conta: str, pasta: Path | None = None) -> Path:
     return (pasta or config.NAVEGADOR_DIR) / f"desativada-{conta}.txt"
 
@@ -165,9 +184,47 @@ def _instante(valor: str) -> datetime:
     return data if data.tzinfo else data.replace(tzinfo=timezone.utc)
 
 
+RE_DURACAO_DASH = re.compile(r"^PT(?:([\d.]+)H)?(?:([\d.]+)M)?(?:([\d.]+)S)?$")
+
+
+def _dash(manifesto: str | None) -> tuple[str | None, float | None]:
+    """Do manifesto DASH que a grade traz em cada vídeo: o endereço da faixa só de áudio de menor taxa (uns 55 kbps,
+    menos de 1 MB por minuto) e a duração em segundos."""
+    import xml.etree.ElementTree as ET
+
+    if not manifesto:
+        return None, None
+    try:
+        raiz = ET.fromstring(manifesto)
+    except ET.ParseError:
+        return None, None
+    tag = lambda el: el.tag.rsplit("}", 1)[-1]  # noqa: E731 (sem o namespace do DASH)
+    achado = RE_DURACAO_DASH.match(raiz.get("mediaPresentationDuration") or "")
+    duracao = (sum(float(v or 0) * f for v, f in zip(achado.groups(), (3600, 60, 1))) or None) if achado else None
+    audios = []
+    for conjunto in (el for el in raiz.iter() if tag(el) == "AdaptationSet"):
+        for rep in (el for el in conjunto.iter() if tag(el) == "Representation"):
+            tipo = rep.get("mimeType") or conjunto.get("mimeType") or conjunto.get("contentType") or ""
+            base = next((el.text.strip() for el in rep if tag(el) == "BaseURL" and el.text), None)
+            if tipo.startswith("audio") and base:
+                audios.append((int(rep.get("bandwidth") or 0), base))
+    return (min(audios)[1] if audios else None), duracao
+
+
+def video_do_site(no: dict) -> dict:
+    """Do vídeo da grade: a menor versão do vídeo, a faixa só de áudio (a que a transcrição das rádios baixa) e a
+    duração. Os endereços são assinados e vencem em uns 2 dias. Vazio se não é vídeo."""
+    if no.get("media_type") != 2:
+        return {}
+    versoes = [v for v in no.get("video_versions") or [] if v.get("url")]
+    menor = min(versoes, key=lambda v: (v.get("width") or 0) * (v.get("height") or 0))["url"] if versoes else None
+    audio, duracao = _dash(no.get("video_dash_manifest"))
+    return {"videoUrl": menor, "audioUrl": audio, "videoDuration": no.get("video_duration") or duracao}
+
+
 def post_do_site(no: dict) -> dict:
     """Post da grade do perfil (`edges[].node`) -> post no formato da Apify."""
-    return {
+    return video_do_site(no) | {
         "id": str(no.get("pk")),
         "shortCode": no.get("code"),
         "url": f"{BASE}/p/{no.get('code')}/",
@@ -389,18 +446,23 @@ class Ritmo:
     """Pausa aleatória entre as leituras, pausa longa de tempos em tempos e tetos por hora e por dia. As leituras
     das últimas 24 h ficam num arquivo, para o teto diário valer entre uma execução e outra."""
 
-    def __init__(self, arquivo: Path | None = None, dormir=time.sleep, relogio=time.time, uniforme: bool = False):
+    def __init__(self, arquivo: Path | None = None, dormir=time.sleep, relogio=time.time, uniforme: bool = False,
+                 por_hora: float | None = None):
         self.arquivo = arquivo
         self.dormir, self.relogio = dormir, relogio
         self.leituras = self._carregar()
         self.feitas = 0
         # Uniforme (vigilância contínua): as leituras se espalham pelo dia, em vez de gastar o teto da hora em
-        # minutos e ficar parado até a hora virar.
+        # minutos e ficar parado até a hora virar. Com `por_hora` (a volta), o ritmo uniforme é fixo.
         self.uniforme = uniforme
+        self.por_hora = por_hora
 
     def intervalo_uniforme(self) -> float:
-        """Segundos entre leituras para gastar o que resta do teto diário nas próximas 12 h, sem passar do teto
-        por hora e sem cair abaixo do ritmo de um dia inteiro."""
+        """Segundos entre leituras. Com `por_hora`, é o ritmo fixo pedido, sem passar do teto por hora. Sem ele, é o
+        ritmo que gasta o que resta do teto diário nas próximas 12 h, sem passar do teto por hora e sem cair abaixo
+        do ritmo de um dia inteiro."""
+        if self.por_hora:
+            return 3600 / min(config.NAV_MAX_HORA, self.por_hora)
         restante = max(config.NAV_MAX_DIA - len(self.leituras), 0)
         por_hora = min(config.NAV_MAX_HORA, max(config.NAV_MAX_DIA / 24, restante / 12))
         return 3600 / por_hora
@@ -842,10 +904,11 @@ class PaginaInstagram:
 
 @contextmanager
 def abrir(visivel: bool = config.NAV_VISIVEL, conta: str = CONTA_PRINCIPAL, dormir=time.sleep,
-          uniforme: bool = False):
+          uniforme: bool = False, por_hora: float | None = None):
     """Navegador logado na conta pedida, pronto para coletar. `dormir` faz as pausas do ritmo (a vigilância passa
-    uma que acorda quando pedem para parar); `uniforme` espalha as leituras pelo dia. Uma conta que o Instagram
-    levar para a página de suspensão fica desativada, para não voltar ao trabalho sozinha."""
+    uma que acorda quando pedem para parar); `uniforme` espalha as leituras pelo dia ou, com `por_hora` (a volta), as
+    faz nesse ritmo fixo. Uma conta que o Instagram levar para a página de suspensão fica desativada, para não voltar
+    ao trabalho sozinha."""
     motivo = desativada(conta)
     if motivo:
         raise ContaDesativada(f"A conta {conta!r} está desativada: {motivo}. Para voltar: "
@@ -855,7 +918,8 @@ def abrir(visivel: bool = config.NAV_VISIVEL, conta: str = CONTA_PRINCIPAL, dorm
             raise SemLogin(f"A conta {conta!r} não está logada no Instagram. Rode: "
                            f"python -m radar navegador-login --conta {conta}")
         try:
-            yield Navegador(pagina, Ritmo(arquivo_leituras(conta), dormir=dormir, uniforme=uniforme))
+            yield Navegador(pagina, Ritmo(arquivo_leituras(conta), dormir=dormir, uniforme=uniforme,
+                                          por_hora=por_hora))
         except ColetaInterrompida as erro:
             if URL_SUSPENSA in str(erro):
                 desativar(conta, "suspensa pelo Instagram")
@@ -871,9 +935,12 @@ def _edge() -> str:
     raise RuntimeError("Não encontrei o Microsoft Edge instalado.")
 
 
-def tem_sessao(pasta: Path = PASTA_PERFIL) -> bool | None:
-    """Se o perfil do navegador guarda a sessão do Instagram (o cookie sessionid). Lê só o nome do cookie, numa cópia
-    do arquivo; o valor fica criptografado. None se o Edge está com o arquivo aberto."""
+def tem_sessao(pasta: Path = PASTA_PERFIL, rede: str = "instagram") -> bool | None:
+    """Se o perfil do navegador guarda a sessão da rede (no Instagram, o cookie sessionid; ver redes.py). Lê só o nome
+    do cookie, numa cópia do arquivo; o valor fica criptografado. None se o Edge está com o arquivo aberto."""
+    from .redes import REDES
+
+    r = REDES[rede]
     origem = pasta / "Default" / "Network" / "Cookies"
     if not origem.exists():
         return False
@@ -885,28 +952,41 @@ def tem_sessao(pasta: Path = PASTA_PERFIL) -> bool | None:
     try:
         con = sqlite3.connect(copia)
         try:
-            return con.execute("SELECT 1 FROM cookies WHERE host_key LIKE '%instagram.com' "
-                               "AND name = 'sessionid'").fetchone() is not None
+            hosts = " OR ".join("host_key LIKE ?" for _ in r.dominios)
+            return con.execute(f"SELECT 1 FROM cookies WHERE ({hosts}) AND name = ?",
+                               (*[f"%{d}" for d in r.dominios], r.cookie)).fetchone() is not None
         finally:
             con.close()
     finally:
         copia.unlink(missing_ok=True)
 
 
-def entrar(aviso=print, espera_max: int = 3600, conta: str = CONTA_PRINCIPAL) -> bool:
-    """Abre o Edge comum, sem automação, com o perfil da conta na página de login do Instagram, e espera a janela ser
-    fechada. Sem automação, o Instagram não estranha o login; a senha fica só no navegador."""
+def entrar(aviso=print, espera_max: int = 3600, conta: str = CONTA_PRINCIPAL, rede: str = "instagram") -> bool:
+    """Abre o Edge comum, sem automação, com o perfil da conta na página de login da rede, e espera a janela ser
+    fechada. Sem automação, a rede não estranha o login; a senha fica só no navegador. Uma conta nova criada para o
+    Threads ou o X fica só naquela rede (redes-<conta>.txt); uma conta que já existia ganha a rede a mais."""
+    from .redes import REDES
+
+    r = REDES[rede]
     pasta = pasta_conta(conta)
-    if tem_sessao(pasta):
-        aviso(f"A conta {conta!r} já está logada no Instagram.")
+    nova = not pasta.exists()
+
+    def anotar():
+        if rede != "instagram" or arquivo_redes(conta).exists():
+            definir_redes(conta, {rede} if nova else redes_da_conta(conta) | {rede})
+
+    if tem_sessao(pasta, rede):
+        anotar()
+        aviso(f"A conta {conta!r} já está logada no {r.titulo}.")
         return True
     pasta.mkdir(parents=True, exist_ok=True)
-    aviso(f"Entre no Instagram na janela do Edge que abriu e feche a janela quando terminar. "
+    aviso(f"Entre no {r.titulo} na janela do Edge que abriu e feche a janela quando terminar. "
           f"Espero até {espera_max // 60} minutos...")
-    if not _edge_comum(pasta, BASE + "/accounts/login/", espera_max, aviso):
+    if not _edge_comum(pasta, r.login, espera_max, aviso):
         return False
-    if tem_sessao(pasta):
-        aviso(f"Login feito. A sessão da conta {conta!r} fica guardada em {pasta}.")
+    if tem_sessao(pasta, rede):
+        anotar()
+        aviso(f"Login feito. A sessão da conta {conta!r} no {r.titulo} fica guardada em {pasta}.")
         return True
     return False
 
@@ -925,7 +1005,12 @@ def _edge_comum(pasta: Path, url: str, espera_max: int, aviso) -> bool:
 
 
 def abrir_edge(conta: str, aviso=print, espera_max: int = 3600) -> bool:
-    """Abre o Edge comum da conta no Instagram, para resolver um aviso, recorrer de uma suspensão ou sair da conta."""
+    """Abre o Edge comum da conta na rede dela (o Instagram, se a conta é de lá), para resolver um aviso, recorrer de
+    uma suspensão ou sair da conta."""
+    from .redes import REDES
+
+    redes = redes_da_conta(conta)
+    base = REDES["instagram" if "instagram" in redes else sorted(redes)[0]].base
     pasta = pasta_conta(conta)
     if not pasta.exists():
         aviso(f"A conta {conta!r} não existe. Para criar: python -m radar navegador-login --conta {conta}")
@@ -934,7 +1019,7 @@ def abrir_edge(conta: str, aviso=print, espera_max: int = 3600) -> bool:
         aviso(f"A conta {conta!r} está aberta em outra janela (vigilância ou busca). Pare-a antes.")
         return False
     aviso("Feche a janela do Edge quando terminar...")
-    return _edge_comum(pasta, BASE + "/", espera_max, aviso)
+    return _edge_comum(pasta, base + "/", espera_max, aviso)
 
 
 def remover(conta: str) -> list[Path]:

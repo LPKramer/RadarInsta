@@ -274,13 +274,100 @@ CREATE TABLE IF NOT EXISTS comentarios (
     publicado_em   TEXT,
     PRIMARY KEY (rede, comentario_id)
 );
+
+-- A mesma notícia (fatos.py): as menções que tratam do mesmo fato, em vários perfis, redes e sites.
+CREATE TABLE IF NOT EXISTS fatos (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    titulo         TEXT,                    -- o resumo da primeira menção
+    primeira_em    TEXT,
+    ultima_em      TEXT,
+    criado_em      TEXT NOT NULL,
+    atualizado_em  TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS fato_mencao (
+    rede       TEXT NOT NULL,
+    post_id    TEXT NOT NULL,
+    fato_id    INTEGER NOT NULL,
+    como       TEXT NOT NULL,               -- novo | link | ia | manual
+    modelo     TEXT,
+    ligado_em  TEXT NOT NULL,
+    PRIMARY KEY (rede, post_id)
+);
+CREATE INDEX IF NOT EXISTS fato_mencao_por_fato ON fato_mencao (fato_id);
+-- A revisão dos agrupamentos (fatos.revisar): a decisão sobre cada par (a < b), para não perguntar de novo.
+CREATE TABLE IF NOT EXISTS fato_pares (
+    a            INTEGER NOT NULL,
+    b            INTEGER NOT NULL,
+    mesmo        INTEGER NOT NULL,          -- 1: juntados; 0: fatos diferentes
+    como         TEXT NOT NULL,             -- texto | ia
+    modelo       TEXT,
+    decidido_em  TEXT NOT NULL,
+    PRIMARY KEY (a, b)
+);
+
+-- Rádios do TO (radios.py): a classificação da DeepSeek das contas com cara de rádio, para o usuário aprovar.
+CREATE TABLE IF NOT EXISTS radios (
+    rede             TEXT NOT NULL,
+    username         TEXT NOT NULL,
+    categoria        TEXT NOT NULL,         -- emissora | programa | radialista | nao
+    cidade           TEXT,
+    uf               TEXT,
+    ibge_id          INTEGER,
+    do_to            INTEGER NOT NULL,
+    confianca        REAL,
+    publica_videos   INTEGER,
+    evidencias       TEXT,
+    modelo           TEXT,
+    classificada_em  TEXT NOT NULL,
+    PRIMARY KEY (rede, username)
+);
+
+-- Vídeos das rádios (transcricao.py): a fila e o resultado. No banco ficam só os trechos que falam de energia, com
+-- os telefones mascarados; a transcrição completa fica fora do repositório (RADAR_MIDIA_DIR). O endereço assinado
+-- do áudio é apagado depois de usado.
+CREATE TABLE IF NOT EXISTS transcricoes (
+    rede          TEXT NOT NULL,
+    post_id       TEXT NOT NULL,
+    username      TEXT NOT NULL,
+    estado        TEXT NOT NULL,            -- pendente | feita | sem_fala | expirado | erro
+    midia_url     TEXT,
+    midia_expira  TEXT,
+    duracao       REAL,                     -- segundos do vídeo
+    segundos      REAL,                     -- segundos transcritos (até 15 minutos)
+    trechos       TEXT,
+    energia       INTEGER,
+    modelo        TEXT,
+    cpu_segundos  REAL,
+    tentativas    INTEGER NOT NULL DEFAULT 0,
+    erro          TEXT,
+    criado_em     TEXT NOT NULL,
+    feito_em      TEXT,
+    PRIMARY KEY (rede, post_id)
+);
+CREATE INDEX IF NOT EXISTS transcricoes_por_estado ON transcricoes (estado);
+
+-- Sites de notícia lidos direto pelo feed (sites.py): portais, jornais, investigativos e as páginas das rádios.
+CREATE TABLE IF NOT EXISTS sites (
+    dominio        TEXT PRIMARY KEY,
+    nome           TEXT,
+    tipo           TEXT,                    -- jornal | portal | radio | investigativo | setorial
+    escopo         TEXT NOT NULL DEFAULT 'to',  -- to: site do TO; nacional: só matéria que cita o TO
+    origem         TEXT,                    -- curadoria | google_noticias | bio_instagram
+    conta          TEXT,                    -- o @ do Instagram que leva ao site
+    feed           TEXT,
+    formato        TEXT,                    -- rss | wp_json; NULL: sem feed
+    verificado_em  TEXT,
+    lido_em        TEXT,
+    itens_ultimo   INTEGER,
+    erro           TEXT
+);
 """
 
 # Campos de perfil que um novo dado só sobrescreve quando não é nulo.
 CAMPOS_PERFIL = (
     "ig_id", "nome", "bio", "seguidores", "seguindo", "n_posts", "privada", "verificada",
     "business", "categoria", "url_externa", "ultimo_post_em", "engajamento_medio",
-    "posts_30d", "posts_recentes", "foto",
+    "posts_30d", "posts_recentes", "foto", "local_perfil",
 )
 
 
@@ -315,7 +402,11 @@ COLUNAS_NOVAS = [("relacionadas", "nome", "TEXT"), ("posts", "arquivo", "TEXT"),
                  # Leitura dos comentários (comentarios.py): quando, e quantos o post tinha, para reler se crescer.
                  ("mencoes", "comentarios_lidos_em", "TEXT"), ("mencoes", "comentarios_na_leitura", "INTEGER"),
                  # Busca de posts: a_investigar | do_to | descartado (busca_posts.py, investigacao.py).
-                 ("posts_busca", "estado", "TEXT")]
+                 ("posts_busca", "estado", "TEXT"),
+                 # O local que a pessoa escreve no perfil (o X tem esse campo): pista para a investigação.
+                 ("contas", "local_perfil", "TEXT"),
+                 # Interações estimadas de um story pela mediana dos posts da conta (estimativa.py).
+                 ("posts", "interacoes_estimadas", "INTEGER")]
 
 
 def conectar_leitura(caminho: Path | str | None = None) -> sqlite3.Connection:

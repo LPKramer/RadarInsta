@@ -65,6 +65,7 @@ def normalizar(item: dict, referencia: datetime | None = None) -> dict | None:
         "categoria": item.get("businessCategoryName"),
         "url_externa": item.get("externalUrl"),
         "foto": item.get("profilePicUrlHD") or item.get("profilePicUrl") or None,
+        "local_perfil": item.get("location") or None,  # o X tem o campo; o Instagram, não
         "completo": item.get("followersCount") is not None,
     }
     conta.update(_resumo_posts(item.get("latestPosts") or [], referencia))
@@ -83,22 +84,23 @@ def relacionadas(item: dict) -> list[tuple[str, str | None]]:
     ]
 
 
-def ingerir(con, item: dict, origem: str, municipios, profundidade: int = 0) -> str | None:
-    """Grava o perfil, as pistas de município (bio e @) e as contas relacionadas. Devolve o username."""
+def ingerir(con, item: dict, origem: str, municipios, profundidade: int = 0, rede: str = "instagram") -> str | None:
+    """Grava o perfil, as pistas de município (bio, local do perfil e @) e as contas relacionadas. Devolve o
+    username. Os perfis do Threads e do X chegam no mesmo formato (redes.py)."""
     conta = normalizar(item)
     if conta is None:
         return None
-    db.upsert_conta(con, {**conta, "origem": origem, "profundidade": profundidade})
+    db.upsert_conta(con, {**conta, "origem": origem, "profundidade": profundidade}, rede)
 
-    texto = f"{conta.get('nome') or ''} {conta.get('bio') or ''}"
+    texto = f"{conta.get('nome') or ''} {conta.get('bio') or ''} {conta.get('local_perfil') or ''}"
     for ibge_id in mun.no_texto(texto, municipios) | mun.no_username(conta["username"], municipios):
-        db.vincular_municipio(con, conta["username"], ibge_id, "bio")
+        db.vincular_municipio(con, conta["username"], ibge_id, "bio", rede)
 
     for rel, nome in relacionadas(item):
-        con.execute("INSERT INTO relacionadas (rede, origem, relacionada, nome) VALUES ('instagram', ?, ?, ?) "
+        con.execute("INSERT INTO relacionadas (rede, origem, relacionada, nome) VALUES (?, ?, ?, ?) "
                     "ON CONFLICT DO UPDATE SET nome = COALESCE(excluded.nome, relacionadas.nome)",
-                    (conta["username"], rel, nome))
-    ingerir_posts(con, conta["username"], item.get("latestPosts") or [])
+                    (rede, conta["username"], rel, nome))
+    ingerir_posts(con, conta["username"], item.get("latestPosts") or [], rede)
     return conta["username"]
 
 
@@ -107,7 +109,7 @@ def shortcode_de_url(url: str) -> str | None:
     return achado.group(1) if achado else None
 
 
-def ingerir_posts(con, username: str, posts: list[dict]) -> int:
+def ingerir_posts(con, username: str, posts: list[dict], rede: str = "instagram") -> int:
     """Grava os posts e atualiza o engajamento dos já conhecidos (fica a maior contagem vista)."""
     def contagem(valor):
         return valor if isinstance(valor, int) and valor >= 0 else None  # -1 = curtidas ocultas
@@ -118,7 +120,7 @@ def ingerir_posts(con, username: str, posts: list[dict]) -> int:
         con.execute(
             """INSERT INTO posts (rede, post_id, username, shortcode, url, tipo, publicado_em, legenda, curtidas,
                                   comentarios, visualizacoes, local, medido_em, capa)
-               VALUES ('instagram', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT (rede, post_id) DO UPDATE SET
                  legenda = COALESCE(excluded.legenda, posts.legenda),
                  capa = COALESCE(excluded.capa, posts.capa),
@@ -128,7 +130,8 @@ def ingerir_posts(con, username: str, posts: list[dict]) -> int:
                  visualizacoes = MAX(COALESCE(excluded.visualizacoes, posts.visualizacoes),
                                      COALESCE(posts.visualizacoes, excluded.visualizacoes)),
                  medido_em = excluded.medido_em""",
-            (str(p.get("id") or p.get("shortCode")), username, p.get("shortCode") or shortcode_de_url(p.get("url")),
+            (rede, str(p.get("id") or p.get("shortCode")), username,
+             p.get("shortCode") or shortcode_de_url(p.get("url")),
              p.get("url"), p.get("type"), p.get("timestamp"), p.get("caption"), contagem(p.get("likesCount")),
              contagem(p.get("commentsCount")), contagem(p.get("videoViewCount")), p.get("locationName"), medido_em,
              p.get("displayUrl") or None),

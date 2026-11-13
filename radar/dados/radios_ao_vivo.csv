@@ -1,0 +1,7 @@
+slug,nome,cidade,site,stream,inicio,fim,ativo,fonte
+unitins_fm,Unitins FM 96.1,Palmas,https://www.unitins.br/fm,https://live.unitins.br/,06:00,09:00,sim,Radio Browser (11/2026)
+capital_fm,Capital FM 87.9,Palmas,,https://sv11.hdradios.net:6928/stream,06:00,09:00,sim,Radio Browser (11/2026)
+conexao_fm,Conexão FM 98.1,Palmas,,https://ssl1.transmissaodigital.com:20441/stream,06:00,09:00,sim,Radio Browser (11/2026)
+meio_norte_fm,Meio Norte 91.1 FM,Palmas,,http://webradio.amsolution.com.br:8300/live,06:00,09:00,sim,Radio Browser (11/2026)
+jovem_fm,Jovem FM,Palmas,,http://wz3.dnip.com.br/aycomau1/aycomau1.stream/playlist.m3u8,06:00,09:00,sim,Radio Browser (11/2026)
+radio_tocantins,Rádio Tocantins,Porto Nacional,https://radiotocantins.com.br/,https://sv1.audiostream.com.br/radio/8040/stream,06:00,09:00,sim,site da rádio (11/2026)

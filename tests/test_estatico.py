@@ -185,8 +185,16 @@ def test_estatico_js_responde_como_o_servidor(con, municipios, tmp_path):
     _baixadas(capas_de=["id-G1"], fotos_de=["gurupinoticias", "dabase"])
     (capas.STORIES / "gurupinoticias" / "s2.mp4").write_bytes(b"\x00\x00\x00\x18ftypmp42")
     conta(con, municipios, "dabase", [], prioridade="C", seguidores=900, municipios=["Palmas"])
+    # O apagão e o story são a mesma notícia: as fileiras mostram um cartão só, com a soma, e o site também.
+    fato_id = con.execute("INSERT INTO fatos (titulo, primeira_em, ultima_em, criado_em, atualizado_em) "
+                          "VALUES ('x', 'x', 'x', 'x', 'x')").lastrowid
+    for post_id in ("id-G1", "s2"):
+        con.execute("INSERT INTO fato_mencao (rede, post_id, fato_id, como, ligado_em) "
+                    "VALUES ('instagram', ?, ?, 'manual', 'x')", (post_id, fato_id))
+    con.commit()
     agora = painel._agora()
     feito = estatico.exportar(con, tmp_path / "site", agora)
+    assert [p["id"] for p in painel.linha(con, "mencoes", agora=agora)["itens"]] == ["s2"]
     assert feito["midias"] == {"s2": {"tipo": "video", "url": "midia/s2.mp4"}}
     gurupi = next(i for i, nome in painel._cidades(con) if nome == "Gurupi")
     pedidos = [

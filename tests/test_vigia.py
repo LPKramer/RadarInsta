@@ -1,5 +1,6 @@
 import time
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -63,6 +64,101 @@ def test_vigiar_visita_as_atrasadas_e_alerta_menção_negativa(con, municipios, 
     alertas = (tmp_path / "alertas.txt").read_text(encoding="utf-8").splitlines()
     assert len(alertas) == 1 and "@portalgrande" in alertas[0]  # a segunda visita não repete o alerta
     assert con.execute("SELECT COUNT(*) FROM reservas").fetchone()[0] == 0
+
+
+def test_volta_passa_uma_vez_pelas_paginas_sem_visita_recente_e_termina(con, municipios, monkeypatch):
+    monkeypatch.setattr(config, "VIGIA_VOLTA_H", 4)
+    monkeypatch.setattr(config, "VIGIA_PRAZO_STORIES_H", 20)
+    preparar(con, municipios)
+    conta(con, municipios, "fofocato", [], prioridade="C", tipo="perfil_fofoca")
+    inicio = datetime.now(timezone.utc)
+    visitas = {"portalgrande": 1, "portalpequeno": 5, "deputado": 30, "fofocato": 6}  # horas desde a última visita
+    con.executemany("INSERT INTO visitas (rede, username, ultima_em) VALUES ('instagram', ?, ?)",
+                    [(u, (inicio - timedelta(hours=h)).isoformat(timespec="seconds")) for u, h in visitas.items()])
+    con.commit()
+    horas = vigia.intervalos(con)
+    # O portal grande, visitado há 1 h, fica de fora da volta. O deputado passou do prazo dos stories e vai primeiro;
+    # depois, a prioridade: a fofoca (intervalo de 1 h) antes do portal pequeno (6 h).
+    assert [u for _, u in vigia.atrasadas(con, inicio, horas, volta=True)] == ["deputado", "fofocato", "portalpequeno"]
+    coletor = ApifyFalso({config.ATOR_POSTS: []})
+    relogio = [inicio]
+
+    def dormir(segundos):
+        relogio[0] += timedelta(seconds=segundos)
+
+    avisos = []
+    resumo = vigia.vigiar(con, coletor, "principal", inicio + timedelta(hours=6), aviso=avisos.append,
+                          relogio=lambda: relogio[0], dormir=dormir, volta=True)
+    visitadas = [e["username"][0] for a, e in coletor.chamadas if a == config.ATOR_POSTS]
+    assert visitadas == ["deputado", "fofocato", "portalpequeno"] and resumo["contas"] == 3
+    assert relogio[0] == inicio  # terminou sem esperar o limite de 6 h
+    assert "sem página" in avisos[-1]
+    assert vigia.atrasadas(con, inicio, horas, volta=True) == []  # uma volta repetida logo depois não relê nada
+    assert con.execute("SELECT COUNT(*) FROM reservas").fetchone()[0] == 0
+
+
+def test_volta_mais_longa_que_a_janela_nao_revisita_e_termina(con, municipios, monkeypatch):
+    monkeypatch.setattr(config, "VIGIA_VOLTA_H", 4)
+    preparar(con, municipios)
+    inicio = datetime.now(timezone.utc)
+    visitas = {"portalgrande": 1, "portalpequeno": 5, "deputado": 30}  # horas desde a última visita
+    con.executemany("INSERT INTO visitas (rede, username, ultima_em) VALUES ('instagram', ?, ?)",
+                    [(u, (inicio - timedelta(hours=h)).isoformat(timespec="seconds")) for u, h in visitas.items()])
+    con.commit()
+    coletor = ApifyFalso({config.ATOR_POSTS: []})
+    relogio = [inicio]
+
+    def passam_duas_horas():  # cada consulta ao relógio leva 2 h: a volta dura mais que as 4 h da janela
+        relogio[0] += timedelta(hours=2)
+        return relogio[0]
+
+    avisos = []
+    resumo = vigia.vigiar(con, coletor, "principal", inicio + timedelta(hours=100), aviso=avisos.append,
+                          relogio=passam_duas_horas, dormir=lambda _: None, volta=True)
+    visitadas = [e["username"][0] for a, e in coletor.chamadas if a == config.ATOR_POSTS]
+    # Nem a página visitada pela própria volta nem a visitada 1 h antes do começo voltam à fila, por mais que passe
+    # o tempo.
+    assert visitadas == ["deputado", "portalpequeno"] and resumo["contas"] == 2
+    assert relogio[0] - inicio > timedelta(hours=4) and "sem página" in avisos[-1]
+
+
+def test_so_a_volta_abre_o_navegador_no_ritmo_fixo(monkeypatch, tmp_path):
+    monkeypatch.setattr(vigia, "ARQUIVO_PARAR", tmp_path / "PARAR")
+    monkeypatch.setattr(config, "VIGIA_VOLTA_POR_HORA", 60)
+    pedidos = []
+
+    @contextmanager
+    def abrir(visivel, conta, dormir, uniforme, por_hora=None):
+        pedidos.append((conta, uniforme, por_hora))
+        yield object()
+
+    monkeypatch.setattr(nav, "abrir", abrir)
+    monkeypatch.setattr(vigia, "vigiar", lambda *args, **kwargs: {"contas": 0})
+    ate = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+    banco = str(tmp_path / "radar.db")
+    assert vigia.trabalhador("principal", ate, banco, False, False, volta=True) == {"conta": "principal", "contas": 0}
+    assert vigia.trabalhador("conta2", ate, banco, False, False) == {"conta": "conta2", "contas": 0}
+    # A vigilância contínua segue espalhando o teto do dia.
+    assert pedidos == [("principal", True, 60), ("conta2", True, None)]
+
+
+def test_volta_repassa_ao_trabalhador_e_nao_espera_contas_novas(monkeypatch, tmp_path):
+    monkeypatch.setattr(vigia, "ARQUIVO_PARAR", tmp_path / "PARAR")
+    recebidos, procuras = [], []
+
+    def trabalhar(conta, ate, banco, visivel, com_ia, atraso, volta=False):
+        recebidos.append((conta, volta))
+        return {"conta": conta, "contas": 10}
+
+    def procurar(conhecidas):
+        procuras.append(conhecidas)
+        return []
+
+    resultados = vigia.executar(["principal", "conta2"], 6, aviso=lambda _: None, procurar_novas=procurar,
+                                trabalhar=trabalhar, executor_cls=ThreadPoolExecutor,
+                                esperar_contas=lambda _: None, volta=True)
+    assert sorted(recebidos) == [("conta2", True), ("principal", True)] and procuras == []
+    assert [r["contas"] for r in resultados] == [10, 10]  # terminaram sem nova tentativa
 
 
 def test_sem_rede_a_ia_fica_para_depois(con, municipios, monkeypatch):

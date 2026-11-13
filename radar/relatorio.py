@@ -20,7 +20,7 @@ SELECT p.post_id, p.publicado_em, p.rede,
        c.seguidores, c.engajamento_medio, x.tema, x.setor, x.sentimento, x.alcance, x.cita_energisa,
        (SELECT GROUP_CONCAT(m.nome, '; ') FROM mencao_municipio mm JOIN municipios m ON m.ibge_id = mm.ibge_id
          WHERE mm.rede = x.rede AND mm.post_id = x.post_id) AS municipios,
-       p.curtidas, p.comentarios, p.visualizacoes, p.medido_em, x.reacao, x.reacao_resumo, x.n_comentarios_lidos,
+       p.curtidas, p.comentarios, p.interacoes_estimadas, p.visualizacoes, p.medido_em, x.reacao, x.reacao_resumo, x.n_comentarios_lidos,
        (SELECT COUNT(*) FROM comentario_analise a JOIN comentarios k ON k.rede = a.rede
           AND k.comentario_id = a.comentario_id WHERE k.rede = x.rede AND k.post_id = x.post_id) AS comentarios_analisados,
        (SELECT SUM(a.sentimento = 'negativo') FROM comentario_analise a JOIN comentarios k ON k.rede = a.rede
@@ -43,14 +43,16 @@ WHERE x.sobre_energia = 1
 
 COLUNAS = ["data", "conta", "rede", "formato", "tipo_conta", "abrangencia_conta", "seguidores", "tema", "setor", "sentimento",
            "alcance",
-           "municipios", "cita_energisa", "curtidas", "comentarios", "visualizacoes", "interacoes", "engajamento_pct",
-           "indice_vs_media_da_conta", "contas_que_repercutiram", "teve_cobertura_estadual", "horas_ate_medicao",
+           "municipios", "cita_energisa", "curtidas", "comentarios", "visualizacoes", "interacoes",
+           "interacoes_estimadas", "engajamento_pct",
+           "indice_vs_media_da_conta", "contas_que_repercutiram", "teve_cobertura_estadual", "fato_id", "fato_posts",
+           "fato_interacoes", "horas_ate_medicao",
            "reacao", "reacao_resumo", "n_comentarios_lidos", "pct_comentarios_negativos", "relatos_de_falta",
-           "locais_dos_relatos", "local_provavel_da_conta", "resumo", "confianca", "legenda", "link", "arquivo",
-           "post_id"]
+           "locais_dos_relatos", "local_provavel_da_conta", "resumo", "confianca", "legenda", "fala_no_video", "link",
+           "arquivo", "post_id"]
 LARGURAS = {"conta": 24, "tipo_conta": 22, "tema": 22, "setor": 20, "municipios": 28, "reacao_resumo": 60, "resumo": 60,
-            "legenda": 60, "link": 40, "locais_dos_relatos": 30, "local_provavel_da_conta": 26, "texto": 70,
-            "local": 22}
+            "legenda": 60, "fala_no_video": 60, "link": 40, "locais_dos_relatos": 30, "local_provavel_da_conta": 26, "texto": 70,
+            "local": 22, "titulo": 60, "contas": 40, "links": 60, "primeira": 17, "ultima": 17}
 
 # Aba "Comentários": a voz da população, comentário por comentário, sem quem comentou.
 ABA_COMENTARIOS = "Comentários"
@@ -78,20 +80,107 @@ def carregar(con, desde: str | None = None) -> pd.DataFrame:
     df["data"] = publicado.dt.strftime("%Y-%m-%d")
     df["municipios"] = df["municipios"].fillna("")
     df["setor"] = df["setor"].fillna("(sem setor)")
-    df["interacoes"] = df["curtidas"].fillna(0) + df["comentarios"].fillna(0)
-    df["engajamento_pct"] = (100 * df["interacoes"] / df["seguidores"].where(df["seguidores"] > 0)).round(2)
+    # O story entra pela estimativa (estimativa.py): a mediana dos posts da conta, que também vem à parte.
+    df["interacoes"] = (df["curtidas"].fillna(0) + df["comentarios"].fillna(0)
+                        + df["interacoes_estimadas"].fillna(0))
+    medido_de_verdade = df["formato"] != "Story"  # a taxa e o índice de uma estimativa pela mediana não diriam nada
+    df["engajamento_pct"] = (100 * df["interacoes"] / df["seguidores"].where(df["seguidores"] > 0)
+                             ).round(2).where(medido_de_verdade)
     # >1 = o post rendeu mais que a média dos posts recentes da própria conta.
     df["indice_vs_media_da_conta"] = (df["interacoes"] / df["engajamento_medio"].where(df["engajamento_medio"] > 0)
-                                      ).round(2)
+                                      ).round(2).where(medido_de_verdade)
     medido = pd.to_datetime(df["medido_em"], utc=True, errors="coerce")
     df["horas_ate_medicao"] = ((medido - publicado).dt.total_seconds() / 3600).round(0)
     df["cita_energisa"] = df["cita_energisa"].map({1: "sim", 0: "não"})
     df["pct_comentarios_negativos"] = (100 * df["comentarios_negativos"].fillna(0)
                                        / df["comentarios_analisados"].where(df["comentarios_analisados"] > 0)).round(0)
     contas, estadual = repercussao(df.assign(_quando=publicado))
-    df["contas_que_repercutiram"] = contas
-    df["teve_cobertura_estadual"] = estadual.map({True: "sim", False: "não"})
+    df["fato_id"], df["fato_posts"], df["fato_interacoes"] = _fatos_dos_posts(con, df)
+    # Com o agrupamento da mesma notícia (fatos.py), a repercussão é a dele; sem, a conta antiga, por tema e lugar.
+    perfis_do_fato = _perfis_dos_fatos(con, df["fato_id"].dropna().unique())
+    estadual_do_fato = df.groupby("fato_id")["abrangencia_conta"].agg(lambda s: (s == "estadual").any()).to_dict()
+    tem = [pd.notna(f) for f in df["fato_id"]]
+    df["contas_que_repercutiram"] = [perfis_do_fato[f] if t else c for f, t, c in zip(df["fato_id"], tem, contas)]
+    df["teve_cobertura_estadual"] = ["sim" if (estadual_do_fato.get(f) if t else e) else "não"
+                                     for f, t, e in zip(df["fato_id"], tem, estadual)]
+    df["fala_no_video"] = _falas(con, df)
     return df[COLUNAS]
+
+
+def _falas(con, df: pd.DataFrame) -> list[str]:
+    """Os trechos da fala sobre energia nos vídeos das rádios (transcricao.py). O painel abre o banco só para leitura:
+    ele pode ser de antes da tabela."""
+    if con.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'transcricoes'").fetchone() is None:
+        return [""] * len(df)
+    falas = dict(con.execute("SELECT post_id, trechos FROM transcricoes WHERE rede = 'instagram' AND energia = 1"
+                             ).fetchall())
+    return [falas.get(p, "") if r == "instagram" else "" for p, r in zip(df["post_id"], df["rede"])]
+
+
+def _tem_fatos(con) -> bool:
+    """O painel abre o banco só para leitura, sem migração: o banco pode ser de antes da tabela."""
+    return con.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'fato_mencao'").fetchone() is not None
+
+
+def _fatos_dos_posts(con, df: pd.DataFrame) -> tuple[pd.Series, pd.Series, pd.Series]:
+    vazio = pd.Series([pd.NA] * len(df), index=df.index, dtype="Int64")
+    if not _tem_fatos(con):
+        return vazio, vazio, vazio
+    ligacoes = pd.read_sql_query(
+        "SELECT f.post_id, f.rede, f.fato_id, COUNT(*) OVER (PARTITION BY f.fato_id) AS fato_posts, "
+        "SUM(COALESCE(p.curtidas, 0) + COALESCE(p.comentarios, 0) + COALESCE(p.interacoes_estimadas, 0)) "
+        "OVER (PARTITION BY f.fato_id) AS fato_interacoes "
+        "FROM fato_mencao f JOIN posts p ON p.rede = f.rede AND p.post_id = f.post_id", con)
+    junto = df[["post_id", "rede"]].merge(ligacoes, on=["post_id", "rede"], how="left")
+    junto.index = df.index
+    # Só faz sentido falar em "mesma notícia" quando ela saiu em mais de um post.
+    sozinho = junto["fato_posts"].fillna(0) < 2
+    return tuple(junto[c].mask(sozinho).astype("Int64") for c in ("fato_id", "fato_posts", "fato_interacoes"))
+
+
+def _perfis_dos_fatos(con, ids) -> dict:
+    from . import fatos
+
+    return {i: fatos.resumo(con, int(i))["perfis"] for i in ids}
+
+
+# Aba "Mesma notícia": um agrupamento por linha, com as interações somadas e os links (fatos.py).
+ABA_FATOS = "Mesma notícia"
+
+
+def mesma_noticia(con, desde: str | None = None) -> pd.DataFrame:
+    from . import fatos
+
+    colunas = ["fato_id", "titulo", "primeira", "ultima", "horas_de_cobertura", "perfis", "posts", "redes", "contas",
+               "tema", "sentimento", "municipios", "curtidas", "comentarios", "interacoes", "visualizacoes", "links"]
+    if not _tem_fatos(con):
+        return pd.DataFrame(columns=colunas)
+    sql, args = "SELECT fato_id FROM fato_mencao f JOIN fatos a ON a.id = f.fato_id", []
+    if desde:
+        sql += " WHERE a.ultima_em >= ?"
+        args.append(desde)
+    linhas = []
+    for (fato_id,) in con.execute(sql + " GROUP BY fato_id HAVING COUNT(*) >= 2 ORDER BY a.primeira_em DESC", args):
+        r = fatos.resumo(con, fato_id)
+        detalhes = con.execute(
+            "SELECT p.username, x.tema, x.sentimento, (SELECT GROUP_CONCAT(m.nome, '; ') FROM mencao_municipio mm "
+            "JOIN municipios m ON m.ibge_id = mm.ibge_id WHERE mm.rede = x.rede AND mm.post_id = x.post_id) "
+            "FROM fato_mencao f JOIN mencoes x ON x.rede = f.rede AND x.post_id = f.post_id "
+            "JOIN posts p ON p.rede = f.rede AND p.post_id = f.post_id WHERE f.fato_id = ?", (fato_id,)).fetchall()
+        municipios = sorted({m for d in detalhes for m in (d[3] or "").split("; ") if m})
+        inicio, fim = (pd.Timestamp(r[k]["data"]) for k in ("primeira", "ultima"))
+        linhas.append({
+            "fato_id": fato_id, "titulo": r["titulo"], "primeira": r["primeira"]["data"][:16].replace("T", " "),
+            "ultima": r["ultima"]["data"][:16].replace("T", " "),
+            "horas_de_cobertura": round((fim - inicio).total_seconds() / 3600),
+            "perfis": r["perfis"], "posts": r["posts"], "redes": ", ".join(r["redes"]),
+            "contas": ", ".join(dict.fromkeys(d[0] for d in detalhes)),
+            "tema": pd.Series([d[1] for d in detalhes]).mode().iat[0],
+            "sentimento": pd.Series([d[2] for d in detalhes]).mode().iat[0],
+            "municipios": "; ".join(municipios), "curtidas": r["curtidas"], "comentarios": r["comentarios"],
+            "interacoes": r["interacoes"], "visualizacoes": r["visualizacoes"], "links": "\n".join(r["links"]),
+        })
+    return pd.DataFrame(linhas, columns=colunas)
 
 
 def repercussao(df: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
@@ -148,6 +237,7 @@ def exportar(con, caminho: Path | None = None, desde: str | None = None) -> tupl
         resumo_por(por_municipio, "municipio").to_excel(escritor, sheet_name="Por município", index=False)
         cruzado.to_excel(escritor, sheet_name="Sentimento x alcance")
         comentarios(con, desde).to_excel(escritor, sheet_name=ABA_COMENTARIOS, index=False)
+        mesma_noticia(con, desde).to_excel(escritor, sheet_name=ABA_FATOS, index=False)
     _formatar(caminho, len(df))
     return caminho, len(df)
 

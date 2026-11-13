@@ -2,6 +2,7 @@ import io
 import json
 import threading
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
 from http.server import ThreadingHTTPServer
@@ -118,6 +119,47 @@ def test_filtros_da_pagina_ver_tudo(con, municipios):
     assert painel.linha(con, f"cidade-{gurupi}")["titulo"] == "Contas de Gurupi"
 
 
+def mesma_noticia(con, *post_ids: str) -> int:
+    """Liga as menções num agrupamento da mesma notícia, como o fatos.consolidar faria."""
+    fato_id = con.execute("INSERT INTO fatos (titulo, primeira_em, ultima_em, criado_em, atualizado_em) "
+                          "VALUES ('x', 'x', 'x', 'x', 'x')").lastrowid
+    for post_id in post_ids:
+        con.execute("INSERT INTO fato_mencao (rede, post_id, fato_id, como, ligado_em) "
+                    "VALUES ('instagram', ?, ?, 'manual', 'x')", (post_id, fato_id))
+    con.commit()
+    return fato_id
+
+
+def test_fileiras_e_ver_tudo_mostram_cada_noticia_uma_vez(con, municipios):
+    _base(con, municipios)
+    # Outro portal deu o mesmo apagão hoje: as duas menções são a mesma notícia.
+    conta(con, municipios, "outroportal", [post(0, curtidas=40, comentarios=4, legenda="Apagão em Gurupi", codigo="O1")])
+    con.execute("INSERT INTO mencoes (rede, post_id, sobre_energia, cita_energisa, tema, sentimento, alcance, resumo, "
+                "analisada_em) VALUES ('instagram', 'id-O1', 1, 0, 'falta_energia', 'negativo', 'local', "
+                "'Apagão em Gurupi.', 'x')")
+    mesma_noticia(con, "id-G1", "id-O1")
+    # Mais novas primeiro: o apagão uma vez só, no post mais novo (o do outro portal, de agora), com as somas; depois
+    # o story, de meia hora atrás.
+    mencoes = painel.linha(con, "mencoes")
+    assert [p["id"] for p in mencoes["itens"]] == ["id-O1", "s2"] and "noticia" not in mencoes["itens"][1]
+    noticia = mencoes["itens"][0]["noticia"]
+    assert (noticia["posts"], noticia["perfis"], noticia["interacoes"]) == (2, 2, 1044)
+    # Por interações, o cartão é o post de mais interações da notícia.
+    por_interacao = painel.linha(con, "mencoes", sobrepor={"ordem": "interacoes"})
+    assert [p["id"] for p in por_interacao["itens"]] == ["id-G1", "s2"]
+    # O "ver tudo" pagina notícias, não posts; a tela inicial e a cidade também juntam.
+    paginas = [painel.linha(con, "mencoes", pagina, limite=1) for pagina in range(3)]
+    assert [([p["id"] for p in d["itens"]], d["mais"]) for d in paginas] == [
+        (["id-O1"], True), (["s2"], False), ([], False)]
+    linhas = {l["id"]: l for l in painel.inicio(con)["linhas"]}
+    assert [p["id"] for p in linhas["mencoes"]["itens"]] == ["id-O1", "s2"]
+    assert [p["id"] for p in linhas["negativas"]["itens"]] == ["id-O1"]
+    # A busca mostra cada post, já com a mesma notícia anotada; a ficha continua com todos os posts.
+    achados = {p["id"]: p for p in painel.busca(con, "apagao")["posts"]}
+    assert set(achados) == {"id-G1", "id-O1"} and achados["id-G1"]["noticia"] == noticia
+    assert [p["id"] for p in painel.post(con, "id-O1")["mesmaNoticia"]] == ["id-G1"]
+
+
 def test_aba_recentes_so_tem_mencoes_em_periodos_curtos(con, municipios):
     _base(con, municipios)
     padrao = painel.linha(con, "recentes")
@@ -174,6 +216,14 @@ def test_servidor_entrega_api_capas_e_nao_sai_das_pastas(tmp_path):
     con = db.conectar(caminho)
     mun.salvar(con, mun.ler_csv())
     _base(con, mun.carregar(con))
+    # Matéria de site: o id é o endereço dela, com a barra no fim.
+    materia = "https://jornal.exemplo.com.br/tocantins/2026/11/conta-de-luz/"
+    con.execute("INSERT INTO posts (rede, post_id, username, url, tipo, publicado_em, legenda, medido_em) VALUES "
+                "('web', ?, 'jornal.exemplo.com.br', ?, 'Materia', '2026-11-10T12:00:00Z', 'Conta de luz sobe', 'x')",
+                (materia, materia))
+    con.execute("INSERT INTO mencoes (rede, post_id, sobre_energia, cita_energisa, sentimento, analisada_em) "
+                "VALUES ('web', ?, 1, 1, 'negativo', 'x')", (materia,))
+    con.commit()
     con.close()
     assert capas.guardar(_jpeg(), capas.arquivo_post("id-G1"), capas.LARGURA_POST)
 
@@ -197,6 +247,8 @@ def test_servidor_entrega_api_capas_e_nao_sai_das_pastas(tmp_path):
         assert pedir("/capa/id-G2")[0] == 404  # sem arquivo nem endereço
         assert pedir("/capa/s2")[:2] == (200, "image/jpeg")  # story da Energisa: da imagem salva para o OCR
         assert pedir("/api/post/s1")[0] == 404
+        codigo, _, corpo = pedir("/api/post/" + urllib.parse.quote(materia, safe=""))  # como o app.js pede (enc)
+        assert codigo == 200 and json.loads(corpo)["id"] == materia
         assert pedir("/marca/energisa.svg")[1] == "image/svg+xml"
         mapa = json.loads(pedir("/api/mapa?camada=mencoes")[2])
         assert {p["id"] for p in mapa["pontos"]} == {"id-G1", "s2"} and mapa["municipios"][0]["nome"] == "Gurupi"

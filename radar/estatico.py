@@ -260,7 +260,8 @@ def _exportar(con, destino: Path, agora: datetime) -> dict:
     # O mapa da base leva também às contas que só estão na base: cada ponto dele abre a página da conta.
     mapa_da_base = painel.responder(con, "mapa", {"camada": "base"}, agora)
     com_pagina = sorted(set(contas) | {p["username"] for p in mapa_da_base["pontos"]})
-    itens = {p["id"]: p for p in painel.posts(con, {}, 1_000_000, agora=agora)[0]}
+    # Todos os posts, com a mesma notícia anotada: as fileiras mostram um cartão por notícia, igual ao daqui.
+    itens = {p["id"]: p for p in painel.anotar_noticias(con, painel.posts(con, {}, 1_000_000, agora=agora)[0])}
     site = _Site(destino, *_arquivos(con, destino, itens, com_pagina))
     site.gravar("api/status.json", painel.responder(con, "status", {}, agora) | {"estatico": True})
     for rota in ("inicio", "mapa-base"):
