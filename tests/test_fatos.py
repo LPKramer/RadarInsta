@@ -201,3 +201,39 @@ def test_revisao_junta_agrupamentos_separados(con, municipios):
     assert titulo.startswith("Portal alerta que boato")  # o título do que apareceu primeiro
     antes = len(chamadas)
     assert fatos.revisar(con, cliente, aviso=lambda _: None)["pares"] == 0 and len(chamadas) == antes
+
+
+def test_consolidacao_completa_agrupa_as_pendentes_e_revisa_tambem_os_pares_antigos(con):
+    # O post e o story do mesmo portal ficaram em agrupamentos separados há dias: a revisão da vigilância, que olha
+    # só os últimos 3 dias, não os pega mais.
+    mencao(con, "1", "acordacolinas", 0, "Portal alerta que boato sobre apagão mundial de três dias voltou a circular.")
+    mencao(con, "2", "acordacolinas", 0.2, "Portal alerta que voltou a circular boato sobre apagão mundial de três dias.",
+           tipo="Story")
+    for m in fatos.pendentes(con):
+        fatos.criar(con, m, "novo")
+    con.commit()
+    assert fatos.revisar(con, dias=3, dry_run=True)["pares"] == 0
+    mencao(con, "3", "soudepalmas", 60, "Energisa anuncia mutirão de negociação de contas em Palmas.")  # pendente
+    cliente, chamadas = ia()
+    resumo = fatos.consolidar_tudo(con, cliente)
+    assert resumo["ligadas"] == 1 and resumo["juntados"] == 1
+    assert fatos.fato_do_post(con, "instagram", "1") == fatos.fato_do_post(con, "instagram", "2")
+    assert fatos.fato_do_post(con, "instagram", "3") not in (None, fatos.fato_do_post(con, "instagram", "1"))
+    assert chamadas == []  # nada aqui precisou da IA
+    assert fatos.reservar_vez(con, "conta2", datetime.now(timezone.utc)) is True  # a vez foi devolvida
+
+
+def test_consolidacao_completa_espera_a_vez_da_vigilancia(con):
+    agora = [datetime.now(timezone.utc)]
+    dormidos = []
+
+    def dormir(segundos):
+        dormidos.append(segundos)
+        agora[0] += timedelta(seconds=segundos)
+
+    assert fatos.reservar_vez(con, "conta2", agora[0]) is True  # a vigilância está consolidando
+    assert fatos.consolidar_tudo(con, None, esperar=60, dormir=dormir, relogio=lambda: agora[0]) is None
+    assert dormidos == [15, 15, 15, 15]
+    assert fatos.reservar_vez(con, "conta3", agora[0]) is False  # a vez continua com a vigilância
+    fatos.liberar_vez(con)
+    assert fatos.consolidar_tudo(con, None, esperar=60, dormir=dormir, relogio=lambda: agora[0]) is not None

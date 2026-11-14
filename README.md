@@ -932,15 +932,30 @@ demonstração das menções à Energisa e as imagens delas. A cópia local fica
 O painel completo está publicado pelo GitHub Pages em https://lpkramer.github.io/RadarRep/. Lá não há servidor:
 `python -m radar site` grava em `site/` a resposta da API a cada pedido das telas (`radar/estatico.py`), com as capas,
 as fotos e a mídia dos stories já baixadas, e `radar/web/estatico.js` lê esses arquivos no lugar do servidor. Tudo o
-que o painel mostra fica público: as menções, as contas monitoradas, as bios e os comentários lidos. Para atualizar o
-site, gere-o na pasta `site` do RadarRep, que é o ramo `gh-pages`, e dê commit e push nela:
+que o painel mostra fica público: as menções, as contas monitoradas, as bios e os comentários lidos.
+
+Antes de gravar, o `site` consolida as notícias com a DeepSeek, por centavos, para cada notícia sair num cartão só.
+As menções sem agrupamento ganham um, e são revisados todos os pares de agrupamentos parecidos, não só os dos últimos
+3 dias, como faz a vigilância. Cada par é decidido uma vez só, e `--sem-ia` pula essa etapa. A vigia faz a mesma
+consolidação quando termina, inclusive no fim de cada volta.
+
+Para atualizar o site, use o `publicar-site.ps1`. Ele consolida, gera o site na pasta `site` do RadarRep, que é o ramo
+`gh-pages`, e confere que o site saiu inteiro, com uma ficha por menção, a página de contas, a busca e as fileiras. Só
+depois disso faz o commit e o push. A geração leva alguns minutos sem mostrar nada; espere a mensagem final.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\publicar-site.ps1            # consolida, gera, confere e publica
+powershell -ExecutionPolicy Bypass -File .\publicar-site.ps1 -SemPush   # só gera e confere
+```
+
+Os comandos soltos fazem o mesmo, mas não conferem nada. Um site interrompido no meio, commitado assim, publica um
+painel sem dados, como aconteceu em 13/nov:
 
 ```powershell
 python -m radar site --saida C:\Users\Luiz\Downloads\RadarRep\site
-cd C:\Users\Luiz\Downloads\RadarRep\site
-git add -A
-git commit -m "Atualiza o painel"
-git push https://github.com/LPKramer/RadarRep.git gh-pages
+git -C C:\Users\Luiz\Downloads\RadarRep\site add -A
+git -C C:\Users\Luiz\Downloads\RadarRep\site commit -m "Dados atualizados"
+git -C C:\Users\Luiz\Downloads\RadarRep\site push https://github.com/LPKramer/RadarRep.git gh-pages
 ```
 - **Ao vivo:** aparece quando alguma página foi visitada nos últimos 15 minutos; o botão laranja embaixo diz quantas
   menções novas a IA achou desde que a tela abriu.

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from urllib.parse import parse_qsl, urlencode, urlsplit
@@ -627,3 +628,23 @@ def liberar_vez(con) -> None:
         con.commit()
     con.execute("DELETE FROM reservas WHERE rede = ? AND username = 'consolidacao'", (REDE_RESERVA,))
     con.commit()
+
+
+def consolidar_tudo(con, cliente, conta: str = "completa", esperar: float = 180, dormir=time.sleep,
+                    relogio=lambda: datetime.now(timezone.utc)) -> Counter | None:
+    """A consolidação completa, antes de gerar o site e no fim da vigilância. Primeiro as menções pendentes ganham um
+    agrupamento; depois são revisados todos os agrupamentos parecidos que ficaram separados (entre uma página e
+    outra, a vigilância só revisa os dos últimos dias). Cada par é decidido uma vez só, então só os pares novos
+    custam. Se a vigilância estiver consolidando, espera a vez dela por até `esperar` segundos; depois disso, devolve
+    None e a consolidação fica para a próxima vez."""
+    limite = relogio() + timedelta(seconds=esperar)
+    while not reservar_vez(con, conta, relogio()):
+        if relogio() >= limite:
+            return None
+        dormir(15)
+    try:
+        resumo = consolidar(con, cliente, aviso=lambda _: None)
+        resumo.update(revisar(con, cliente, aviso=lambda _: None))
+        return resumo
+    finally:
+        liberar_vez(con)

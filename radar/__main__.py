@@ -577,7 +577,8 @@ def stories_(limite: int = typer.Option(None, help="Máximo de contas monitorada
 @app.command()
 def vigiar(horas: float = typer.Option(8, help="Por quanto tempo fica rodando (ex.: 8 = a madrugada toda)."),
            contas_nav: str = OPCAO_CONTAS,
-           sem_ia: bool = typer.Option(False, "--sem-ia", help="Não classifica na hora (deixa para o mencoes)."),
+           sem_ia: bool = typer.Option(False, "--sem-ia", help="Não classifica na hora (deixa para o mencoes) nem "
+                                                              "consolida as notícias no fim."),
            dry_run: bool = typer.Option(False, "--dry-run", help="Só mostra prioridades e capacidade."),
            volta: bool = typer.Option(False, "--volta", help="Uma volta: passa uma vez por toda página sem visita nas "
                                                             "últimas RADAR_VIGIA_VOLTA_H horas (4) e termina, a "
@@ -592,7 +593,8 @@ def vigiar(horas: float = typer.Option(8, help="Por quanto tempo fica rodando (e
     a cada 2 h, os demais portais a cada 6 h, o resto uma vez por dia (ajuste em RADAR_VIGIA_*_H). As contas entram com
     alguns minutos de diferença, contas logadas depois entram sozinhas, e duas contas barradas pelo Instagram em menos
     de 1 hora param todas. Posts novos que passam no filtro vão na hora para a IA, e as menções negativas entram em
-    data/alertas.txt. Com --volta, passa uma vez por todas as páginas e termina."""
+    data/alertas.txt. Com --volta, passa uma vez por todas as páginas e termina. No fim, consolida as notícias (a
+    mesma notícia, com a DeepSeek)."""
     from collections import Counter
 
     from . import vigia
@@ -622,6 +624,8 @@ def vigiar(horas: float = typer.Option(8, help="Por quanto tempo fica rodando (e
         faltam = len(vigia.atrasadas(con, datetime.now(timezone.utc), vigia.intervalos(con), volta=True,
                                      inicio=inicio))
         minutos = (datetime.now(timezone.utc) - inicio).total_seconds() / 60
+        if not sem_ia:
+            _consolidar_noticias(con)
         typer.echo(f"Volta completa em {minutos:.0f} min." if not faltam else
                    f"Volta incompleta em {minutos:.0f} min: {faltam} páginas ficaram sem visita (limite de horas, "
                    "parada ou contas barradas).")
@@ -639,6 +643,8 @@ def vigiar(horas: float = typer.Option(8, help="Por quanto tempo fica rodando (e
         return
     vigia.executar(nomes, horas, com_ia=not sem_ia, aviso=typer.echo,
                    procurar_novas=None if contas_nav else vigia.contas_novas)
+    if not sem_ia:
+        _consolidar_noticias(con)
 
 
 @app.command("mencoes")
@@ -668,6 +674,28 @@ def _consolidar_fatos(con) -> None:
         fatos.consolidar(con, ds.criar_cliente(), aviso=typer.echo)
     except Exception as erro:  # sem chave, sem saldo ou sem conexão: o próximo comando (ou a vigilância) consolida
         typer.echo(f"Mesma notícia: ficou para depois ({type(erro).__name__}).", err=True)
+
+
+def _consolidar_noticias(con) -> None:
+    """A consolidação completa da mesma notícia (fatos.consolidar_tudo), antes de gerar o site e no fim da
+    vigilância, para cada notícia sair num cartão só. Custa centavos na DeepSeek. Sem IA (sem chave, sem saldo ou sem
+    rede), avisa e segue."""
+    from . import classificacao_deepseek as ds, fatos, vigia
+
+    if not vigia.ia_disponivel():
+        typer.echo("Mesma notícia: a DeepSeek não respondeu; a consolidação ficou para depois.", err=True)
+        return
+    try:
+        resumo = fatos.consolidar_tudo(con, ds.criar_cliente())
+    except Exception as erro:
+        typer.echo(f"Mesma notícia: ficou para depois ({type(erro).__name__}).", err=True)
+        return
+    if resumo is None:
+        typer.echo("Mesma notícia: a vigilância está consolidando há mais de 3 minutos; ficou para depois.", err=True)
+        return
+    typer.echo(f"Mesma notícia: {resumo['ligadas']} menções agrupadas, {resumo['pares']} pares de agrupamentos "
+               f"revisados ({resumo['juntados']} juntados), {resumo['pedidos']} pedidos à DeepSeek. "
+               f"Situação: {fatos.situacao(con)}")
 
 
 @app.command("fatos")
@@ -1175,12 +1203,19 @@ def capas(limite: int = typer.Option(2000, help="Máximo de imagens nesta rodada
 
 
 @app.command()
-def site(saida: Path = typer.Option(Path("site"), help="Pasta do site (padrão: site/).")):
+def site(saida: Path = typer.Option(Path("site"), help="Pasta do site (padrão: site/)."),
+         sem_ia: bool = typer.Option(False, "--sem-ia", help="Não consolida as notícias antes (sem DeepSeek).")):
     """Grava o painel completo sem servidor, para o GitHub Pages (https://lpkramer.github.io/RadarRep/): a resposta
     da API a cada pedido das telas, com as capas, as fotos e a mídia dos stories já baixadas. Ao publicar, tudo o que
-    o painel mostra fica público. Grátis: só lê o banco e a pasta de dados."""
+    o painel mostra fica público. Antes, consolida as notícias (a mesma notícia, com a DeepSeek: centavos), para cada
+    notícia sair num cartão só; fora isso, só lê o banco e a pasta de dados. Para gerar e publicar de uma vez, use o
+    publicar-site.ps1."""
     from . import estatico
 
+    if not sem_ia:
+        con = db.conectar()
+        _consolidar_noticias(con)
+        con.close()
     feito = estatico.exportar(db.conectar_leitura(), saida)
     typer.echo(f"Site em {saida.resolve()}: {feito['mencoes']} menções, {feito['contas']} contas, "
                f"{len(feito['com_capa'])} capas, {len(feito['com_foto'])} fotos e {len(feito['midias'])} mídias de "
